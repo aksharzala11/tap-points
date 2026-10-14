@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Tap Points</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one centered column built for tablet and phone stations. Four tabs on top (Kid, Award, Checkout, Roster); gold coin marks every points figure. Kid is public, the other three need the staff password. */
+:root{
+  color-scheme:light;
+  --bg:#EBF0F2; --surface:#FFFFFF; --surface2:#F3F7F8; --ink:#10282F; --muted:#587078; --line:#D2DDE1;
+  --accent:#0E6A72; --on-accent:#FFFFFF; --gold:#F0B02E; --on-gold:#3B2A00;
+  --earn:#17784A; --earn-bg:#DCF1E5; --spend:#A93C28; --spend-bg:#FADFD7; --on-spend:#FFFFFF;
+  --warn:#7A4F00; --warn-bg:#FBEBC8; --ring1:#E1EEF0; --ring2:#EFF5F6;
+  --font-display:"Bricolage Grotesque",ui-rounded,system-ui,sans-serif;
+  --font-body:"DM Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --font-mono:"JetBrains Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0C1A20; --surface:#13262E; --surface2:#0F2027; --ink:#E6EFF2; --muted:#8FA6AE; --line:#26424C;
+    --accent:#4FC3CC; --on-accent:#06242A; --gold:#F0B02E; --on-gold:#3B2A00;
+    --earn:#63D79E; --earn-bg:#12392B; --spend:#FF9F88; --spend-bg:#40201A; --on-spend:#3A0F06;
+    --warn:#F3C766; --warn-bg:#3A2D0E; --ring1:#173039; --ring2:#112830; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0C1A20; --surface:#13262E; --surface2:#0F2027; --ink:#E6EFF2; --muted:#8FA6AE; --line:#26424C;
+  --accent:#4FC3CC; --on-accent:#06242A; --gold:#F0B02E; --on-gold:#3B2A00;
+  --earn:#63D79E; --earn-bg:#12392B; --spend:#FF9F88; --spend-bg:#40201A; --on-spend:#3A0F06;
+  --warn:#F3C766; --warn-bg:#3A2D0E; --ring1:#173039; --ring2:#112830; color-scheme:dark;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:16px;line-height:1.45;-webkit-text-size-adjust:100%}
+.wrap{max-width:720px;margin:0 auto;padding-inline:16px;padding-block:calc(16px + env(safe-area-inset-top,0px)) calc(48px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:16px}
+h1,h2,h3,p{margin:0}
+h1{font:700 26px/1 var(--font-display);letter-spacing:-.01em}
+h2{font:700 22px/1.15 var(--font-display);text-wrap:balance}
+h3{font:700 13px/1 var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.muted{color:var(--muted)}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px}
+.topbtns{display:flex;gap:8px;flex-wrap:wrap}
+.coin{width:28px;height:28px;flex:none}
+.coin.lg{width:56px;height:56px}
+.coin.sm{width:18px;height:18px;vertical-align:-3px}
+.nfc{min-height:44px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:700 14px var(--font-body);display:inline-flex;align-items:center;gap:8px;cursor:pointer}
+.nfc i{width:10px;height:10px;border-radius:50%;background:var(--muted);display:inline-block}
+.nfc.on i{background:var(--earn)}
+.tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px}
+.tabs button{min-height:48px;border:0;border-radius:10px;background:transparent;color:var(--muted);font:700 15px var(--font-body);cursor:pointer;min-width:0}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--on-accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.flash{border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:2px;font-size:15px}
+.flash strong{font:700 19px/1.2 var(--font-display)}
+.flash.earn{background:var(--earn-bg);color:var(--earn)}
+.flash.spend,.flash.bad{background:var(--spend-bg);color:var(--spend)}
+.flash.warn{background:var(--warn-bg);color:var(--warn)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:16px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:480px){.grid2{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font:700 12px var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+input[type=text],input[type=number],input[type=search],input[type=password]{width:100%;min-height:48px;padding:0 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface);color:var(--ink);font:500 16px var(--font-body)}
+input.mono{font-family:var(--font-mono);font-size:14px}
+.btn{min-height:48px;padding:0 18px;border-radius:10px;border:1px solid transparent;background:var(--accent);color:var(--on-accent);font:700 16px var(--font-body);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.earn{background:var(--earn);color:var(--surface)}
+.btn.danger{background:var(--spend);color:var(--on-spend)}
+.btn.big{min-height:60px;font-size:18px;width:100%}
+.btn.small{min-height:44px;padding:0 14px;font-size:14px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+.btns .btn{flex:1 1 120px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips button{min-height:44px;min-width:56px;padding:0 14px;border-radius:999px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font:700 16px var(--font-body);cursor:pointer;font-variant-numeric:tabular-nums}
+.chips button[aria-pressed="true"]{background:var(--gold);border-color:var(--gold);color:var(--on-gold)}
+.idle{display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px;padding-block:18px}
+.pulse{width:112px;height:112px;border-radius:50%;background:var(--surface2);display:grid;place-items:center;box-shadow:0 0 0 14px var(--ring1),0 0 0 30px var(--ring2);margin-bottom:30px}
+@media (prefers-reduced-motion:no-preference){.pulse{animation:breathe 2.8s ease-in-out infinite}}
+@keyframes breathe{50%{box-shadow:0 0 0 18px var(--ring1),0 0 0 40px var(--ring2)}}
+.hello{font:700 24px/1.2 var(--font-display)}
+.balrow{display:flex;align-items:center;gap:14px}
+.bal{font:700 clamp(60px,18vw,104px)/1 var(--font-display);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.recent{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.recent li,.row{display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);min-width:0}
+.recent li span{flex:1;min-width:0;overflow-wrap:anywhere}
+.pos{color:var(--earn)}.neg{color:var(--spend)}
+b.pos,b.neg{font-variant-numeric:tabular-nums}
+.results{display:flex;flex-direction:column;gap:6px}
+.results button{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px;padding:8px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);color:var(--ink);font:500 16px var(--font-body);cursor:pointer;text-align:left}
+.results button span:first-child{min-width:0;overflow-wrap:anywhere}
+.results small{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+.num{font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+.menu{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}
+.item{position:relative;min-height:72px;padding:10px 12px;border:1px solid var(--line);border-radius:12px;background:var(--surface2);color:var(--ink);text-align:left;display:flex;flex-direction:column;gap:4px;font:500 16px var(--font-body);cursor:pointer;min-width:0}
+.item .nm{font-weight:700;overflow-wrap:anywhere}
+.item .cost{color:var(--muted);font-variant-numeric:tabular-nums}
+.item .qty{position:absolute;top:8px;right:8px;min-width:26px;height:26px;border-radius:13px;background:var(--accent);color:var(--on-accent);font:700 13px/26px var(--font-body);text-align:center;padding-inline:6px}
+.cartline{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.cartline span:first-child{flex:1;min-width:0;overflow-wrap:anywhere}
+.cartline button{min-width:44px;min-height:44px;border-radius:10px;border:1px solid var(--line);background:var(--surface2);color:var(--ink);font:700 18px var(--font-body);cursor:pointer}
+.kidbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px;border-radius:12px;background:var(--surface2);flex-wrap:wrap}
+.kidbar .nm{font:700 22px/1.1 var(--font-display);overflow-wrap:anywhere}
+.total{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.total b{font:700 34px/1 var(--font-display);font-variant-numeric:tabular-nums}
+.rowname{flex:1;min-width:0}
+.rowname .n{font-weight:700;overflow-wrap:anywhere}
+.rowname small{display:block;font-family:var(--font-mono);font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+.row.sel{background:var(--surface2)}
+.row .pick{background:none;border:0;padding:0;color:inherit;font:inherit;text-align:left;cursor:pointer;flex:1;min-width:0;display:flex;align-items:center;gap:12px}
+.empty{padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
+.detail{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:12px;background:var(--surface2)}
+.between{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="var(--gold)"/><circle cx="12" cy="12" r="7" fill="none" stroke="var(--on-gold)" stroke-opacity=".55" stroke-width="1.6"/><path d="M12 8.2v7.6M9.4 12h5.2" stroke="var(--on-gold)" stroke-opacity=".7" stroke-width="1.6" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><svg class="coin"><use href="#coin"/></svg><h1>Tap Points</h1></div>
+    <div class="topbtns">
+      <button class="nfc" id="lockBtn" type="button" hidden>Lock staff tabs</button>
+      <button class="nfc" id="nfcBtn" type="button"><i></i><span id="nfcLabel">Start NFC reader</span></button>
+    </div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Mode">
+    <button role="tab" data-tab="kid" aria-selected="true">Kid</button>
+    <button role="tab" data-tab="award" aria-selected="false">Award</button>
+    <button role="tab" data-tab="checkout" aria-selected="false">Checkout</button>
+    <button role="tab" data-tab="roster" aria-selected="false">Roster</button>
+  </nav>
+
+  <div class="flash" id="flash" role="status" aria-live="polite" hidden></div>
+
+  <!-- STAFF SIGN IN -->
+  <section id="loginCard" class="card" hidden>
+    <h2>Staff sign in</h2>
+    <p class="muted">Award, Checkout and Roster are for staff only. Enter the staff password to continue.</p>
+    <div class="field"><label for="pw">Password</label><input type="password" id="pw" autocomplete="current-password"></div>
+    <button class="btn" id="loginBtn" type="button">Unlock</button>
+  </section>
+
+  <!-- KID -->
+  <section id="p-kid" class="card">
+    <div id="kidCard"></div>
+    <div id="kidFind" class="stack" hidden>
+      <div class="field">
+        <label for="kidSearch">Staff: find by name</label>
+        <input type="search" id="kidSearch" placeholder="Start typing a name" autocomplete="off">
+      </div>
+      <div class="results" id="kidResults"></div>
+    </div>
+  </section>
+
+  <!-- AWARD -->
+  <section id="p-award" class="card" hidden>
+    <h2>Give points</h2>
+    <div class="grid2">
+      <div class="field"><label for="awLabel">Station name</label><input type="text" id="awLabel" value="Ring toss" maxlength="40"></div>
+      <div class="field"><label for="awAmt">Points per tap</label><input type="number" id="awAmt" value="10" min="1" step="1" inputmode="numeric"></div>
+    </div>
+    <div class="chips" id="awChips" role="group" aria-label="Quick amounts"></div>
+    <div class="kidbar"><div><h3>Ready</h3><p id="awHint" style="margin-top:6px"></p></div></div>
+    <div class="field">
+      <label for="awSearch">No wristband? Find by name</label>
+      <input type="search" id="awSearch" placeholder="Start typing a name" autocomplete="off">
+    </div>
+    <div class="results" id="awResults"></div>
+  </section>
+
+  <!-- CHECKOUT -->
+  <section id="p-checkout" class="card" hidden>
+    <h2>Prize counter</h2>
+    <div id="coKid"></div>
+    <h3>Prizes and candy</h3>
+    <div class="menu" id="coMenu"></div>
+    <div class="grid2">
+      <div class="field"><label for="coCustom">Other amount</label><input type="number" id="coCustom" min="1" step="1" inputmode="numeric" placeholder="Points"></div>
+      <div class="field" style="justify-content:flex-end"><button class="btn ghost" id="coAddCustom" type="button">Add to total</button></div>
+    </div>
+    <div id="coCart"></div>
+    <div class="total"><h3>Total</h3><b id="coTotal">0</b></div>
+    <p id="coNote" class="muted"></p>
+    <button class="btn danger big" id="coCharge" type="button" disabled>Charge points</button>
+    <div class="field">
+      <label for="coSearch">No wristband? Find by name</label>
+      <input type="search" id="coSearch" placeholder="Start typing a name" autocomplete="off">
+    </div>
+    <div class="results" id="coResults"></div>
+  </section>
+
+  <!-- ROSTER -->
+  <section id="p-roster" class="stack" hidden>
+    <div class="card" id="seedCard" hidden>
+      <h2>Try it with test data</h2>
+      <p class="muted">Nobody is registered yet. This adds Test 1 to Test 5 with 0 points, plus Candy 1 (25), Candy 2 (15), Prize 1 (5) and Prize 2 (20).</p>
+      <button class="btn" id="seedBtn" type="button">Load 5 test kids and menu</button>
+    </div>
+
+    <div class="card">
+      <h2>Sign up a kid</h2>
+      <div class="grid2">
+        <div class="field"><label for="rgName">Name</label><input type="text" id="rgName" maxlength="60" autocomplete="off"></div>
+        <div class="field"><label for="rgStart">Starting points</label><input type="number" id="rgStart" value="0" min="0" step="1" inputmode="numeric"></div>
+      </div>
+      <div class="field"><label for="rgTag">Wristband ID (tap a wristband to fill it)</label><input type="text" class="mono" id="rgTag" autocomplete="off" placeholder="04:a1:b2:c3:d4:e5:f6"></div>
+      <div class="btns">
+        <button class="btn" id="rgBtn" type="button">Register</button>
+        <button class="btn ghost" id="rgTest" type="button">Make a test ID</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Prize menu</h2>
+      <div id="mnList"></div>
+      <div class="grid2">
+        <div class="field"><label for="mnName">Item</label><input type="text" id="mnName" maxlength="40" autocomplete="off"></div>
+        <div class="field"><label for="mnCost">Cost in points</label><input type="number" id="mnCost" min="1" step="1" inputmode="numeric"></div>
+      </div>
+      <button class="btn ghost" id="mnAdd" type="button">Add item</button>
+    </div>
+
+    <div class="card">
+      <div class="between"><h2>Kids</h2><span class="muted" id="rsCount"></span></div>
+      <div class="field"><label for="rsSearch">Search</label><input type="search" id="rsSearch" placeholder="Name or wristband ID" autocomplete="off"></div>
+      <div id="rsDetail" class="detail" hidden>
+        <div class="between"><h3 id="rsTitle"></h3><span class="num" id="rsBal"></span></div>
+        <div class="grid2">
+          <div class="field"><label for="rsAmt">Points</label><input type="number" id="rsAmt" min="1" step="1" inputmode="numeric"></div>
+          <div class="field"><label for="rsNote">Reason</label><input type="text" id="rsNote" maxlength="40" placeholder="Correction"></div>
+        </div>
+        <div class="btns">
+          <button class="btn earn" id="rsAdd" type="button">Add</button>
+          <button class="btn danger" id="rsTake" type="button">Take away</button>
+        </div>
+        <div class="grid2">
+          <div class="field"><label for="rsName">Name</label><input type="text" id="rsName" maxlength="60"></div>
+          <div class="field" style="justify-content:flex-end"><button class="btn ghost" id="rsSave" type="button">Save name</button></div>
+        </div>
+        <div class="field"><label>Wristband</label><span class="muted" id="rsTag" style="font-family:var(--font-mono);font-size:13px;overflow-wrap:anywhere"></span></div>
+        <button class="btn ghost" id="rsLink" type="button">Link a different wristband</button>
+        <button class="btn ghost" id="rsDel" type="button">Remove this kid</button>
+      </div>
+      <div id="rsList"></div>
+      <button class="btn ghost" id="csvBtn" type="button">Copy all balances</button>
+    </div>
+
+    <div class="card">
+      <h2>Recent activity</h2>
+      <div id="ledger"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
+  var fmt=function(n){return Number(n||0).toLocaleString()};
+  var COIN='<svg class="coin sm"><use href="#coin"/></svg>';
+  var ADMIN_TABS={award:1,checkout:1,roster:1};
+  var state={pw:null,kids:{},menu:[],ledger:[],tab:'kid',kidTag:null,kidInfo:null,co:{tag:null,cart:{},custom:0},rsSel:null,linkMode:false,scanning:false,busy:0};
+  var lastSeen={},awardAt={},pollTimer=null,kidTimer=null;
+
+  function normTag(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100)}
+  function flash(kind,title,sub){
+    var f=$('flash');f.className='flash '+kind;
+    f.innerHTML='<strong>'+esc(title)+'</strong>'+(sub?'<span>'+esc(sub)+'</span>':'');
+    f.hidden=false;clearTimeout(flash.t);
+    flash.t=setTimeout(function(){f.hidden=true},kind==='bad'?7000:4500);
+  }
+
+  /* ---------- server calls ---------- */
+  async function api(action,payload){
+    var r;
+    try{
+      r=await fetch('/api/admin',{method:'POST',headers:{'content-type':'application/json','x-admin-password':state.pw||''},body:JSON.stringify(Object.assign({action:action},payload||{}))});
+    }catch(_){throw new Error('No connection. Check the wifi and try again.')}
+    var j={};try{j=await r.json()}catch(_){}
+    if(r.status===401){if(state.pw)lock(true);throw new Error(j.error||'Wrong password.')}
+    if(!r.ok)throw new Error(j.error||'Something went wrong. Try again.');
+    return j;
+  }
+  async function write(action,payload){state.busy++;try{return await api(action,payload)}finally{state.busy--}}
+  async function refresh(){
+    var j=await api('list');
+    var o={};j.kids.forEach(function(k){o[k.tag]=k});
+    state.kids=o;state.ledger=j.ledger||[];state.menu=j.menu||[];
+    renderAll();
+  }
+  async function applyDelta(tag,delta,label){
+    var j=await write('change',{tag:tag,delta:delta,label:label});
+    if(state.kids[tag])state.kids[tag].balance=j.balance;
+    renderCheckout();renderRoster();renderDetailBal();
+    refresh().catch(function(){});
+    return j.balance;
+  }
+
+  /* ---------- staff lock ---------- */
+  function onUnlocked(){
+    $('lockBtn').hidden=false;$('kidFind').hidden=false;
+    showTab(state.tab);
+    clearInterval(pollTimer);
+    pollTimer=setInterval(function(){if(state.pw&&!document.hidden&&!state.busy)refresh().catch(function(){})},4000);
+  }
+  function lock(expired){
+    state.pw=null;state.kids={};state.menu=[];state.ledger=[];state.rsSel=null;state.linkMode=false;
+    try{sessionStorage.removeItem('tp_pw')}catch(_){}
+    clearInterval(pollTimer);
+    $('lockBtn').hidden=true;$('kidFind').hidden=true;
+    renderAll();showTab(state.tab);
+    if(expired)flash('warn','Signed out','Enter the staff password again.');
+  }
+  async function login(){
+    var pw=$('pw').value;if(!pw)return;
+    state.pw=pw;
+    try{
+      await refresh();
+      try{sessionStorage.setItem('tp_pw',pw)}catch(_){}
+      $('pw').value='';onUnlocked();
+    }catch(e){state.pw=null;flash('bad',e.message)}
+  }
+  $('loginBtn').onclick=login;
+  $('pw').addEventListener('keydown',function(e){if(e.key==='Enter')login()});
+  $('lockBtn').onclick=function(){lock(false);flash('earn','Staff tabs locked')};
+
+  /* ---------- tabs ---------- */
+  function showTab(t){
+    state.tab=t;
+    document.querySelectorAll('.tabs button').forEach(function(b){b.setAttribute('aria-selected',String(b.dataset.tab===t))});
+    var locked=ADMIN_TABS[t]&&!state.pw;
+    ['kid','award','checkout','roster'].forEach(function(x){$('p-'+x).hidden=!(x===t&&!locked)});
+    $('loginCard').hidden=!locked;
+    if(locked)setTimeout(function(){$('pw').focus()},0);
+  }
+  document.querySelectorAll('.tabs button').forEach(function(b){b.onclick=function(){showTab(b.dataset.tab)}});
+
+  /* ---------- NFC ---------- */
+  var scanCtl=null,wake=null;
+  async function startNfc(){
+    if(!('NDEFReader' in window)){flash('warn','NFC reading is not available on this device','Use Chrome on an Android phone or tablet, with NFC turned on in settings.');return}
+    try{
+      var r=new NDEFReader();scanCtl=new AbortController();
+      await r.scan({signal:scanCtl.signal});
+      r.onreading=function(e){onTag(e.serialNumber)};
+      r.onreadingerror=function(){flash('warn','Could not read that wristband','Hold it flat against the back of the phone and try again.')};
+      state.scanning=true;
+      try{if(navigator.wakeLock){wake=await navigator.wakeLock.request('screen')}}catch(_){}
+      setNfc();
+    }catch(err){
+      state.scanning=false;setNfc();
+      flash('warn','NFC did not start','Allow NFC when Chrome asks, and check NFC is on in phone settings. ('+(err&&err.name||'error')+')');
+    }
+  }
+  function stopNfc(){try{scanCtl&&scanCtl.abort()}catch(_){}try{wake&&wake.release()}catch(_){}state.scanning=false;setNfc()}
+  function setNfc(){$('nfcBtn').classList.toggle('on',state.scanning);$('nfcLabel').textContent=state.scanning?'NFC reader on':'Start NFC reader'}
+  $('nfcBtn').onclick=function(){state.scanning?stopNfc():startNfc()};
+
+  function onTag(raw){
+    var tag=normTag(raw),now=Date.now();
+    if(!tag)return;
+    if(lastSeen[tag]&&now-lastSeen[tag]<1500)return;
+    lastSeen[tag]=now;
+    if(state.tab==='kid')showKid(tag);
+    else if(!state.pw)return;
+    else if(state.tab==='award')doAward(tag);
+    else if(state.tab==='checkout')pickCheckout(tag);
+    else tagInRoster(tag);
+  }
+
+  /* ---------- search pickers (staff only, uses the loaded roster) ---------- */
+  function wireSearch(inputId,resultsId,onPick){
+    var inp=$(inputId),res=$(resultsId);
+    inp.addEventListener('input',function(){
+      var q=inp.value.trim().toLowerCase();
+      if(!q){res.innerHTML='';return}
+      var m=Object.keys(state.kids).map(function(t){return state.kids[t]}).filter(function(k){return (k.name||'').toLowerCase().indexOf(q)>-1||(k.tag||'').indexOf(q)>-1})
+        .sort(function(a,b){return (a.name||'').localeCompare(b.name||'')}).slice(0,6);
+      res.innerHTML=m.length?m.map(function(k){return '<button type="button" data-tag="'+esc(k.tag)+'"><span>'+esc(k.name)+'<br><small>'+esc(k.tag)+'</small></span><span class="num">'+COIN+' '+fmt(k.balance)+'</span></button>'}).join(''):'<div class="empty">No kid matches that.</div>';
+    });
+    res.addEventListener('click',function(e){
+      var b=e.target.closest('button[data-tag]');if(!b)return;
+      onPick(b.dataset.tag);inp.value='';res.innerHTML='';
+    });
+  }
+
+  /* ---------- KID (public) ---------- */
+  function idleHTML(t,s){return '<div class="idle"><div class="pulse"><svg class="coin lg"><use href="#coin"/></svg></div><h2>'+esc(t)+'</h2><p class="muted">'+esc(s)+'</p></div>'}
+  async function showKid(tag){
+    state.kidTag=tag;state.kidInfo=null;renderKid();
+    clearTimeout(kidTimer);kidTimer=setTimeout(function(){state.kidTag=null;state.kidInfo=null;renderKid()},20000);
+    try{
+      var r=await fetch('/api/kid?tag='+encodeURIComponent(tag),{cache:'no-store'});
+      var j=await r.json();
+      if(state.kidTag===tag){state.kidInfo=r.ok?j:{error:true};renderKid()}
+    }catch(_){if(state.kidTag===tag){state.kidInfo={error:true};renderKid()}}
+  }
+  function renderKid(){
+    var el=$('kidCard'),k=state.kidInfo;
+    if(!state.kidTag){el.innerHTML=idleHTML('Tap your wristband','Hold it against the phone to see your points.');return}
+    if(!k){el.innerHTML=idleHTML('One moment','Looking up your points.');return}
+    if(k.error){el.innerHTML=idleHTML('Could not load points','Check the connection and tap again.');return}
+    if(!k.found){el.innerHTML=idleHTML('Not signed up yet','Ask a helper at the desk to register this wristband.');return}
+    var rec=(k.recent||[]).map(function(r){return '<li><span>'+esc(r.l||'')+'</span><b class="'+(r.d>0?'pos':'neg')+'">'+(r.d>0?'+':'−')+fmt(Math.abs(r.d))+'</b></li>'}).join('');
+    el.innerHTML='<p class="hello">Hi, '+esc(k.name)+'</p><div class="balrow"><svg class="coin lg"><use href="#coin"/></svg><div class="bal">'+fmt(k.balance)+'</div></div><p class="muted">points</p>'+(rec?'<h3 style="margin-top:14px">Recent</h3><ul class="recent">'+rec+'</ul>':'');
+  }
+  wireSearch('kidSearch','kidResults',showKid);
+
+  /* ---------- AWARD ---------- */
+  var AMTS=[1,5,10,25,50];
+  function renderAwardChips(){
+    var cur=Number($('awAmt').value);
+    $('awChips').innerHTML=AMTS.map(function(a){return '<button type="button" data-a="'+a+'" aria-pressed="'+(a===cur)+'">+'+a+'</button>'}).join('');
+  }
+  function awardHint(){
+    var a=Number($('awAmt').value),l=$('awLabel').value.trim()||'Game';
+    $('awHint').innerHTML=(a>0?'Tap a wristband to give <b>+'+fmt(a)+'</b> points for '+esc(l)+'.':'Enter how many points each tap gives.');
+    renderAwardChips();
+  }
+  $('awChips').addEventListener('click',function(e){var b=e.target.closest('button[data-a]');if(!b)return;$('awAmt').value=b.dataset.a;awardHint()});
+  $('awAmt').addEventListener('input',awardHint);$('awLabel').addEventListener('input',awardHint);
+  async function doAward(tag){
+    var k=state.kids[tag];
+    if(!k){flash('bad','This wristband is not registered','Sign the kid up in Roster first.');$('rgTag').value=tag;return}
+    var a=Math.floor(Number($('awAmt').value)),l=$('awLabel').value.trim()||'Game';
+    if(!(a>0)){flash('warn','Set the points per tap first');return}
+    var now=Date.now();
+    if(awardAt[tag]&&now-awardAt[tag]<3000){flash('warn','Already given',k.name+' just got points. Wait a few seconds to tap again.');return}
+    awardAt[tag]=now;
+    try{var nb=await applyDelta(tag,a,l);flash('earn','+'+fmt(a)+' for '+k.name,'Balance is now '+fmt(nb)+' points')}
+    catch(e){awardAt[tag]=0;flash('bad',e.message)}
+  }
+  wireSearch('awSearch','awResults',doAward);
+
+  /* ---------- CHECKOUT ---------- */
+  function cartTotal(){
+    var t=state.co.custom||0;
+    state.menu.forEach(function(it){t+=(state.co.cart[it.name]||0)*it.cost});
+    return t;
+  }
+  function cartLabel(){
+    var parts=[];
+    state.menu.forEach(function(it){var q=state.co.cart[it.name];if(q)parts.push(it.name+(q>1?' ×'+q:''))});
+    if(state.co.custom)parts.push('Other');
+    return parts.join(', ').slice(0,80)||'Purchase';
+  }
+  function pickCheckout(tag){
+    if(!state.kids[tag]){flash('bad','This wristband is not registered','Sign the kid up in Roster first.');return}
+    state.co.tag=tag;renderCheckout();
+  }
+  function renderCheckout(){
+    var k=state.co.tag&&state.kids[state.co.tag];
+    $('coKid').innerHTML=k
+      ?'<div class="kidbar"><div><h3>Paying</h3><div class="nm" style="margin-top:6px">'+esc(k.name)+'</div></div><div class="num" style="font-size:26px">'+COIN+' '+fmt(k.balance)+'</div></div>'
+      :'<div class="empty">Tap a wristband to start a purchase.</div>';
+    $('coMenu').innerHTML=state.menu.length?state.menu.map(function(it,i){
+      var q=state.co.cart[it.name]||0;
+      return '<button type="button" class="item" data-i="'+i+'"><span class="nm">'+esc(it.name)+'</span><span class="cost">'+COIN+' '+fmt(it.cost)+'</span>'+(q?'<span class="qty">×'+q+'</span>':'')+'</button>';
+    }).join(''):'<div class="empty" style="grid-column:1/-1">No prizes yet. Add some under Roster, or use Other amount.</div>';
+    var lines=[];
+    state.menu.forEach(function(it,i){var q=state.co.cart[it.name];if(q)lines.push('<div class="cartline"><span>'+esc(it.name)+' ×'+q+'</span><span class="num">'+fmt(q*it.cost)+'</span><button type="button" data-minus="'+i+'" aria-label="Remove one '+esc(it.name)+'">−</button></div>')});
+    if(state.co.custom)lines.push('<div class="cartline"><span>Other amount</span><span class="num">'+fmt(state.co.custom)+'</span><button type="button" data-minus="custom" aria-label="Remove other amount">−</button></div>');
+    $('coCart').innerHTML=lines.join('');
+    var t=cartTotal();$('coTotal').textContent=fmt(t);
+    var btn=$('coCharge'),note=$('coNote'),ok=false;
+    if(!k){note.textContent='';btn.textContent='Tap a wristband first'}
+    else if(t<=0){note.textContent='';btn.textContent='Add something to charge'}
+    else if(k.balance<t){note.textContent=k.name+' needs '+fmt(t-k.balance)+' more points.';btn.textContent='Not enough points'}
+    else{note.textContent=k.name+' will have '+fmt(k.balance-t)+' points left.';btn.textContent='Charge '+fmt(t)+' points';ok=true}
+    btn.disabled=!ok;
+  }
+  $('coMenu').addEventListener('click',function(e){
+    var b=e.target.closest('button[data-i]');if(!b)return;
+    var it=state.menu[Number(b.dataset.i)];if(!it)return;
+    state.co.cart[it.name]=(state.co.cart[it.name]||0)+1;renderCheckout();
+  });
+  $('coCart').addEventListener('click',function(e){
+    var b=e.target.closest('button[data-minus]');if(!b)return;
+    if(b.dataset.minus==='custom'){state.co.custom=0}
+    else{var it=state.menu[Number(b.dataset.minus)];if(it){state.co.cart[it.name]=Math.max(0,(state.co.cart[it.name]||0)-1);if(!state.co.cart[it.name])delete state.co.cart[it.name]}}
+    renderCheckout();
+  });
+  $('coAddCustom').onclick=function(){
+    var v=Math.floor(Number($('coCustom').value));
+    if(!(v>0)){flash('warn','Enter a number of points above zero');return}
+    state.co.custom=(state.co.custom||0)+v;$('coCustom').value='';renderCheckout();
+  };
+  $('coCharge').onclick=async function(){
+    var tag=state.co.tag,k=state.kids[tag],t=cartTotal();
+    if(!k||t<=0)return;
+    $('coCharge').disabled=true;
+    try{
+      var nb=await applyDelta(tag,-t,cartLabel());
+      flash('spend','Charged '+fmt(t)+' points to '+k.name,'Balance is now '+fmt(nb)+' points');
+      state.co={tag:null,cart:{},custom:0};
+    }catch(e){flash('bad',e.message)}
+    renderCheckout();
+  };
+  wireSearch('coSearch','coResults',pickCheckout);
+
+  /* ---------- ROSTER ---------- */
+  async function tagInRoster(tag){
+    if(state.linkMode&&state.rsSel){
+      var oldTag=state.rsSel,k=state.kids[oldTag];
+      state.linkMode=false;setLinkBtn();
+      try{
+        await write('relink',{tag:oldTag,newTag:tag});
+        await refresh();
+        flash('earn','Wristband linked',(k?k.name:'Kid')+' now uses this wristband.');
+        selectKid(tag);
+      }catch(e){flash('bad',e.message)}
+      return;
+    }
+    $('rgTag').value=tag;
+    var k2=state.kids[tag];
+    if(k2){flash('warn',k2.name+' is already registered','Opened below so you can adjust points.');selectKid(tag)}
+    else{flash('earn','New wristband read','Type a name and press Register.');$('rgName').focus()}
+  }
+  function setLinkBtn(){$('rsLink').textContent=state.linkMode?'Tap the new wristband now (tap here to cancel)':'Link a different wristband'}
+  $('rsLink').onclick=function(){
+    if(!state.scanning&&state.linkMode===false)flash('warn','Start the NFC reader first','Use the button at the top, then try again.');
+    state.linkMode=!state.linkMode;setLinkBtn();
+  };
+  $('rgTest').onclick=function(){$('rgTag').value='test-'+Math.random().toString(36).slice(2,8)};
+  $('rgBtn').onclick=async function(){
+    var name=$('rgName').value.trim(),tag=normTag($('rgTag').value),start=Math.max(0,Math.floor(Number($('rgStart').value)||0));
+    if(!name){flash('warn','Enter the kid’s name');return}
+    if(!tag){flash('warn','Tap a wristband or make a test ID');return}
+    try{
+      await write('register',{name:name,tag:tag,start:start});
+      await refresh();
+      flash('earn','Registered '+name,start?'Starting with '+fmt(start)+' points':'Starting at 0 points');
+      $('rgName').value='';$('rgTag').value='';
+    }catch(e){flash('bad',e.message)}
+  };
+  $('seedBtn').onclick=async function(){
+    try{await write('seed');await refresh();flash('earn','Test data loaded','Test 1 to Test 5 and the prize menu are ready.')}catch(e){flash('bad',e.message)}
+  };
+  async function saveMenu(items){
+    var j=await write('setMenu',{items:items});
+    state.menu=j.items;renderMenuList();renderCheckout();
+  }
+  $('mnAdd').onclick=async function(){
+    var n=$('mnName').value.trim(),c=Math.floor(Number($('mnCost').value));
+    if(!n||!(c>0)){flash('warn','Enter an item name and a cost above zero');return}
+    if(state.menu.some(function(i){return i.name.toLowerCase()===n.toLowerCase()})){flash('warn','That item is already on the menu');return}
+    try{await saveMenu(state.menu.concat([{name:n,cost:c}]));$('mnName').value='';$('mnCost').value=''}catch(e){flash('bad',e.message)}
+  };
+  $('mnList').addEventListener('click',async function(e){
+    var b=e.target.closest('button[data-del]');if(!b)return;
+    try{await saveMenu(state.menu.filter(function(_,i){return i!==Number(b.dataset.del)}))}catch(err){flash('bad',err.message)}
+  });
+  function renderMenuList(){
+    $('mnList').innerHTML=state.menu.length?state.menu.map(function(it,i){
+      return '<div class="cartline"><span>'+esc(it.name)+'</span><span class="num">'+COIN+' '+fmt(it.cost)+'</span><button type="button" data-del="'+i+'" aria-label="Remove '+esc(it.name)+'">×</button></div>';
+    }).join(''):'<div class="empty">No items yet. Add the prizes and candy kids can buy.</div>';
+  }
+
+  function selectKid(tag){
+    state.rsSel=tag;state.linkMode=false;setLinkBtn();
+    var k=state.kids[tag],d=$('rsDetail');
+    if(!k){d.hidden=true;return}
+    d.hidden=false;
+    $('rsTitle').textContent=k.name;$('rsName').value=k.name;$('rsTag').textContent=k.tag;
+    renderDetailBal();renderRoster();
+  }
+  function renderDetailBal(){var k=state.kids[state.rsSel];$('rsBal').innerHTML=k?COIN+' '+fmt(k.balance):''}
+  async function adjust(sign){
+    var tag=state.rsSel,k=state.kids[tag],a=Math.floor(Number($('rsAmt').value));
+    if(!k)return;if(!(a>0)){flash('warn','Enter a number of points above zero');return}
+    var note=$('rsNote').value.trim()||(sign>0?'Added by staff':'Taken by staff');
+    try{var nb=await applyDelta(tag,sign*a,note);flash(sign>0?'earn':'spend',(sign>0?'Added ':'Took ')+fmt(a)+(sign>0?' to ':' from ')+k.name,'Balance is now '+fmt(nb)+' points');$('rsAmt').value='';$('rsNote').value=''}
+    catch(e){flash('bad',e.message)}
+  }
+  $('rsAdd').onclick=function(){adjust(1)};$('rsTake').onclick=function(){adjust(-1)};
+  $('rsSave').onclick=async function(){
+    var tag=state.rsSel,n=$('rsName').value.trim();if(!state.kids[tag]||!n)return;
+    try{await write('rename',{tag:tag,name:n});await refresh();$('rsTitle').textContent=n;flash('earn','Name saved')}catch(e){flash('bad',e.message)}
+  };
+  var delArm=null;
+  $('rsDel').onclick=async function(){
+    var tag=state.rsSel,k=state.kids[tag];if(!k)return;
+    if(!delArm){$('rsDel').textContent='Tap again to remove '+k.name;delArm=setTimeout(function(){delArm=null;$('rsDel').textContent='Remove this kid'},4000);return}
+    clearTimeout(delArm);delArm=null;$('rsDel').textContent='Remove this kid';
+    try{await write('remove',{tag:tag});state.rsSel=null;await refresh();selectKid(null);flash('warn','Removed '+k.name)}catch(e){flash('bad',e.message)}
+  };
+  $('rsSearch').addEventListener('input',renderRoster);
+  function renderRoster(){
+    var q=$('rsSearch').value.trim().toLowerCase();
+    var all=Object.keys(state.kids).map(function(t){return state.kids[t]});
+    $('seedCard').hidden=!(state.pw&&!all.length);
+    var m=all.filter(function(k){return !q||(k.name||'').toLowerCase().indexOf(q)>-1||(k.tag||'').indexOf(q)>-1})
+      .sort(function(a,b){return (a.name||'').localeCompare(b.name||'',undefined,{numeric:true})});
+    $('rsCount').textContent=all.length+(all.length===1?' kid':' kids')+(q?' · '+m.length+' shown':'');
+    if(!all.length){$('rsList').innerHTML='<div class="empty">No kids yet. Register the first wristband above.</div>';return}
+    if(!m.length){$('rsList').innerHTML='<div class="empty">No kid matches that.</div>';return}
+    $('rsList').innerHTML=m.slice(0,50).map(function(k){
+      return '<div class="row'+(k.tag===state.rsSel?' sel':'')+'"><button class="pick" type="button" data-tag="'+esc(k.tag)+'"><span class="rowname"><span class="n">'+esc(k.name)+'</span><small>'+esc(k.tag)+'</small></span><span class="num">'+COIN+' '+fmt(k.balance)+'</span></button></div>';
+    }).join('')+(m.length>50?'<div class="empty">Showing the first 50. Search to narrow the list.</div>':'');
+  }
+  $('rsList').addEventListener('click',function(e){var b=e.target.closest('button[data-tag]');if(b)selectKid(b.dataset.tag)});
+  $('csvBtn').onclick=function(){
+    var rows=['name,wristband,points'].concat(Object.keys(state.kids).map(function(t){var k=state.kids[t];return '"'+String(k.name).replace(/"/g,'""')+'",'+k.tag+','+k.balance}));
+    var txt=rows.join('\n');
+    try{navigator.clipboard.writeText(txt).then(function(){flash('earn','Copied '+(rows.length-1)+' balances','Paste into a spreadsheet.')},function(){flash('warn','Copy was blocked here')})}
+    catch(_){flash('warn','Copy was blocked here')}
+  };
+  function renderLedger(){
+    $('ledger').innerHTML=state.ledger.length?state.ledger.map(function(r){
+      var t=new Date(r.ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+      return '<div class="row"><span class="rowname"><span class="n">'+esc(r.name)+'</span><small>'+esc(r.label||'')+' · '+esc(t)+'</small></span><b class="num '+(r.delta>0?'pos':'neg')+'">'+(r.delta>0?'+':'−')+fmt(Math.abs(r.delta))+'</b></div>';
+    }).join(''):'<div class="empty">Nothing yet. Awards and purchases show up here.</div>';
+  }
+
+  function renderAll(){
+    renderKid();renderCheckout();renderRoster();renderLedger();renderMenuList();
+    if(state.rsSel&&!state.kids[state.rsSel]){state.rsSel=null;$('rsDetail').hidden=true}
+    else renderDetailBal();
+  }
+
+  /* ---------- start ---------- */
+  awardHint();renderAll();showTab('kid');
+  (async function(){
+    var pw=null;try{pw=sessionStorage.getItem('tp_pw')}catch(_){}
+    if(!pw)return;
+    state.pw=pw;
+    try{await refresh();onUnlocked()}catch(_){state.pw=null;try{sessionStorage.removeItem('tp_pw')}catch(__){}}
+  })();
+})();
+</script>
+</body>
+</html>

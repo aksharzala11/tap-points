@@ -1,0 +1,12 @@
+{
+  "name": "tap-points",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NFC wristband points for a kids event: award points at games, spend them at the prize counter.",
+  "dependencies": {
+    "@upstash/redis": "1.34.3"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
