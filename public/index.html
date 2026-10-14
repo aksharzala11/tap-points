@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=DM+Sans:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
 <style>
-/* Layout: one centered column built for tablet and phone stations. Four tabs on top (Kid, Award, Checkout, Roster); gold coin marks every points figure. Kid is public, the other three need the staff password. */
+/* Layout: one centered column built for tablet and phone stations. Four tabs on top (Kid, Award, Checkout, Admin); gold coin marks every points figure. Kid is public, Award and Checkout need a helper or admin password, Admin needs the admin password. */
 :root{
   color-scheme:light;
   --bg:#EBF0F2; --surface:#FFFFFF; --surface2:#F3F7F8; --ink:#10282F; --muted:#587078; --line:#D2DDE1;
@@ -118,6 +118,17 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
 .empty{padding:14px;border:1px dashed var(--line);border-radius:12px;color:var(--muted);text-align:center}
 .detail{display:flex;flex-direction:column;gap:12px;padding:14px;border-radius:12px;background:var(--surface2)}
 .between{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px}
+.tile{background:var(--surface2);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.tile span{font:700 12px var(--font-body);text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.tile b{font:700 28px/1.1 var(--font-display);font-variant-numeric:tabular-nums}
+.barrow{display:flex;flex-direction:column;gap:5px;padding:6px 0}
+.barlab{display:flex;justify-content:space-between;gap:12px;font-size:15px}
+.barlab span{min-width:0;overflow-wrap:anywhere}
+.barlab b{font-variant-numeric:tabular-nums;white-space:nowrap}
+.track{height:8px;border-radius:4px;background:var(--surface2)}
+.track i{display:block;height:100%;border-radius:4px;background:var(--earn)}
+.track i.spend{background:var(--spend)}
 </style>
 </head>
 <body>
@@ -129,7 +140,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   <header class="top">
     <div class="brand"><svg class="coin"><use href="#coin"/></svg><h1>Tap Points</h1></div>
     <div class="topbtns">
-      <button class="nfc" id="lockBtn" type="button" hidden>Lock staff tabs</button>
+      <button class="nfc" id="lockBtn" type="button" hidden>Sign out</button>
       <button class="nfc" id="nfcBtn" type="button"><i></i><span id="nfcLabel">Start NFC reader</span></button>
     </div>
   </header>
@@ -138,15 +149,15 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     <button role="tab" data-tab="kid" aria-selected="true">Kid</button>
     <button role="tab" data-tab="award" aria-selected="false">Award</button>
     <button role="tab" data-tab="checkout" aria-selected="false">Checkout</button>
-    <button role="tab" data-tab="roster" aria-selected="false">Roster</button>
+    <button role="tab" data-tab="roster" aria-selected="false">Admin</button>
   </nav>
 
   <div class="flash" id="flash" role="status" aria-live="polite" hidden></div>
 
-  <!-- STAFF SIGN IN -->
+  <!-- SIGN IN -->
   <section id="loginCard" class="card" hidden>
-    <h2>Staff sign in</h2>
-    <p class="muted">Award, Checkout and Roster are for staff only. Enter the staff password to continue.</p>
+    <h2 id="loginTitle">Helper sign in</h2>
+    <p class="muted" id="loginText"></p>
     <div class="field"><label for="pw">Password</label><input type="password" id="pw" autocomplete="current-password"></div>
     <button class="btn" id="loginBtn" type="button">Unlock</button>
   </section>
@@ -156,7 +167,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     <div id="kidCard"></div>
     <div id="kidFind" class="stack" hidden>
       <div class="field">
-        <label for="kidSearch">Staff: find by name</label>
+        <label for="kidSearch">Helpers: find by name</label>
         <input type="search" id="kidSearch" placeholder="Start typing a name" autocomplete="off">
       </div>
       <div class="results" id="kidResults"></div>
@@ -200,8 +211,19 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     <div class="results" id="coResults"></div>
   </section>
 
-  <!-- ROSTER -->
+  <!-- ADMIN -->
   <section id="p-roster" class="stack" hidden>
+    <div class="card">
+      <h2>Overview</h2>
+      <div class="tiles" id="tiles"></div>
+      <h3 style="margin-top:6px">Points given by station</h3>
+      <div id="stations"></div>
+      <h3 style="margin-top:6px">Prizes and candy bought</h3>
+      <div id="prizes"></div>
+      <h3 style="margin-top:6px">Highest balances</h3>
+      <div id="topbal"></div>
+    </div>
+
     <div class="card" id="seedCard" hidden>
       <h2>Try it with test data</h2>
       <p class="muted">Nobody is registered yet. This adds Test 1 to Test 5 with 0 points, plus Candy 1 (25), Candy 2 (15), Prize 1 (5) and Prize 2 (20).</p>
@@ -278,11 +300,20 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   var esc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
   var fmt=function(n){return Number(n||0).toLocaleString()};
   var COIN='<svg class="coin sm"><use href="#coin"/></svg>';
-  var ADMIN_TABS={award:1,checkout:1,roster:1};
-  var state={pw:null,kids:{},menu:[],ledger:[],tab:'kid',kidTag:null,kidInfo:null,co:{tag:null,cart:{},custom:0},rsSel:null,linkMode:false,scanning:false,busy:0};
+  var TAB_NEEDS={award:'staff',checkout:'staff',roster:'admin'};
+  var state={role:null,pw:null,kids:{},menu:[],ledger:[],stats:null,tab:'kid',kidTag:null,kidInfo:null,co:{kid:null,cart:{},custom:0},rsSel:null,linkMode:false,scanning:false,busy:0};
   var lastSeen={},pollTimer=null,kidTimer=null,pending=null;
 
-  /* phone-local storage: keeps staff signed in and keeps the mode when a tag tap opens a fresh page (iPhone) */
+  function hasRole(need){return need==='staff'?(state.role==='staff'||state.role==='admin'):state.role==='admin'}
+  function normTag(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100)}
+  function flash(kind,title,sub){
+    var f=$('flash');f.className='flash '+kind;
+    f.innerHTML='<strong>'+esc(title)+'</strong>'+(sub?'<span>'+esc(sub)+'</span>':'');
+    f.hidden=false;clearTimeout(flash.t);
+    flash.t=setTimeout(function(){f.hidden=true},kind==='bad'?7000:4500);
+  }
+
+  /* phone-local storage: keeps people signed in and keeps the mode when a tag tap opens a fresh page (iPhone) */
   function ls(k,v){
     try{
       if(v===undefined)return localStorage.getItem(k);
@@ -295,23 +326,16 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   try{
     var u0=new URL(location.href),t0=u0.searchParams.get('t');
     if(t0){
-      pending=t0.trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100);
+      pending=normTag(t0);
       u0.searchParams.delete('t');
       history.replaceState(null,'',u0.pathname+(u0.search||'')+u0.hash);
     }
   }catch(_){}
   function runPending(){
     if(!pending)return;
-    if(ADMIN_TABS[state.tab]&&!state.pw)return;
+    var need=TAB_NEEDS[state.tab];
+    if(need&&!hasRole(need))return;
     var p=pending;pending=null;onTag(p);
-  }
-
-  function normTag(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100)}
-  function flash(kind,title,sub){
-    var f=$('flash');f.className='flash '+kind;
-    f.innerHTML='<strong>'+esc(title)+'</strong>'+(sub?'<span>'+esc(sub)+'</span>':'');
-    f.hidden=false;clearTimeout(flash.t);
-    flash.t=setTimeout(function(){f.hidden=true},kind==='bad'?7000:4500);
   }
 
   /* ---------- server calls ---------- */
@@ -329,57 +353,70 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   async function refresh(){
     var j=await api('list');
     var o={};j.kids.forEach(function(k){o[k.tag]=k});
-    state.kids=o;state.ledger=j.ledger||[];state.menu=j.menu||[];
+    state.kids=o;state.ledger=j.ledger||[];state.menu=j.menu||[];state.stats=j.stats||null;
     renderAll();
   }
-  async function applyDelta(tag,delta,label){
-    var j=await write('change',{tag:tag,delta:delta,label:label});
-    if(state.kids[tag])state.kids[tag].balance=j.balance;
-    renderCheckout();renderRoster();renderDetailBal();
-    refresh().catch(function(){});
-    return j.balance;
+  async function loadMenu(){var m=await api('menu');state.menu=m.items||[];renderCheckout()}
+  async function applyDelta(tag,delta,label,opts){
+    var j=await write('change',Object.assign({tag:tag,delta:delta,label:label},opts||{}));
+    if(state.kids[tag]){state.kids[tag].balance=j.balance;renderRoster();renderDetailBal()}
+    if(state.role==='admin')refresh().catch(function(){});
+    return j;
   }
 
-  /* ---------- staff lock ---------- */
+  /* ---------- sign in and out ---------- */
   function onUnlocked(){
-    $('lockBtn').hidden=false;$('kidFind').hidden=false;
+    $('lockBtn').hidden=false;
+    $('lockBtn').textContent='Sign out ('+(state.role==='admin'?'admin':'helper')+')';
+    $('kidFind').hidden=false;
     showTab(state.tab);
     clearInterval(pollTimer);
-    pollTimer=setInterval(function(){if(state.pw&&!document.hidden&&!state.busy)refresh().catch(function(){})},4000);
+    pollTimer=setInterval(function(){
+      if(!state.pw||document.hidden||state.busy)return;
+      (state.role==='admin'?refresh():loadMenu()).catch(function(){});
+    },state.role==='admin'?10000:30000);
   }
   function lock(expired){
-    state.pw=null;state.kids={};state.menu=[];state.ledger=[];state.rsSel=null;state.linkMode=false;
+    state.pw=null;state.role=null;state.kids={};state.menu=[];state.ledger=[];state.stats=null;state.rsSel=null;state.linkMode=false;
+    state.co={kid:null,cart:{},custom:0};
     ls('tp_pw',null);
     clearInterval(pollTimer);
-    $('lockBtn').hidden=true;$('kidFind').hidden=true;
+    $('lockBtn').hidden=true;$('kidFind').hidden=true;$('rsDetail').hidden=true;
     renderAll();showTab(state.tab);
-    if(expired)flash('warn','Signed out','Enter the staff password again.');
+    if(expired)flash('warn','Signed out','Enter the password again.');
   }
   async function login(){
     var pw=$('pw').value;if(!pw)return;
     state.pw=pw;
     try{
-      await refresh();
+      var j=await api('whoami');
+      state.role=j.role;
+      if(state.role==='admin')await refresh();else await loadMenu();
       ls('tp_pw',pw);
-      $('pw').value='';onUnlocked();runPending();
-    }catch(e){state.pw=null;flash('bad',e.message)}
+      $('pw').value='';
+      onUnlocked();runPending();
+    }catch(e){state.pw=null;state.role=null;flash('bad',e.message)}
   }
   $('loginBtn').onclick=login;
   $('pw').addEventListener('keydown',function(e){if(e.key==='Enter')login()});
-  $('lockBtn').onclick=function(){lock(false);flash('earn','Staff tabs locked')};
+  $('lockBtn').onclick=function(){lock(false);flash('earn','Signed out')};
 
   /* ---------- tabs ---------- */
   function showTab(t){
     state.tab=t;ls('tp_tab',t);
     document.querySelectorAll('.tabs button').forEach(function(b){b.setAttribute('aria-selected',String(b.dataset.tab===t))});
-    var locked=ADMIN_TABS[t]&&!state.pw;
+    var need=TAB_NEEDS[t],locked=!!need&&!hasRole(need);
     ['kid','award','checkout','roster'].forEach(function(x){$('p-'+x).hidden=!(x===t&&!locked)});
     $('loginCard').hidden=!locked;
-    if(locked)setTimeout(function(){$('pw').focus()},0);
+    if(locked){
+      $('loginTitle').textContent=need==='admin'?'Admin sign in':'Helper sign in';
+      $('loginText').textContent=need==='admin'?'This tab is for the admin only. Enter the admin password.':'Award and Checkout are for helpers. Enter the helper password.';
+      setTimeout(function(){$('pw').focus()},0);
+    }
   }
   document.querySelectorAll('.tabs button').forEach(function(b){b.onclick=function(){showTab(b.dataset.tab)}});
 
-  /* ---------- NFC ---------- */
+  /* ---------- NFC (Android Chrome) ---------- */
   var scanCtl=null,wake=null;
   async function startNfc(){
     if(!('NDEFReader' in window)){flash('warn','This browser cannot read tags directly','On an iPhone, hold the tag to the top of the phone and tap the banner that appears. On Android, use Chrome with NFC turned on.');return}
@@ -405,26 +442,33 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     if(!tag)return;
     if(lastSeen[tag]&&now-lastSeen[tag]<1500)return;
     lastSeen[tag]=now;
-    if(state.tab==='kid')showKid(tag);
-    else if(!state.pw)return;
-    else if(state.tab==='award')doAward(tag);
+    if(state.tab==='kid'){showKid(tag);return}
+    var need=TAB_NEEDS[state.tab];
+    if(!hasRole(need))return;
+    if(state.tab==='award')doAward(tag);
     else if(state.tab==='checkout')pickCheckout(tag);
     else tagInRoster(tag);
   }
 
-  /* ---------- search pickers (staff only, uses the loaded roster) ---------- */
+  /* ---------- name search (helpers get at most 8 matches from the server) ---------- */
   function wireSearch(inputId,resultsId,onPick){
-    var inp=$(inputId),res=$(resultsId);
+    var inp=$(inputId),res=$(resultsId),seq=0,timer=null;
     inp.addEventListener('input',function(){
-      var q=inp.value.trim().toLowerCase();
-      if(!q){res.innerHTML='';return}
-      var m=Object.keys(state.kids).map(function(t){return state.kids[t]}).filter(function(k){return (k.name||'').toLowerCase().indexOf(q)>-1||(k.tag||'').indexOf(q)>-1})
-        .sort(function(a,b){return (a.name||'').localeCompare(b.name||'')}).slice(0,6);
-      res.innerHTML=m.length?m.map(function(k){return '<button type="button" data-tag="'+esc(k.tag)+'"><span>'+esc(k.name)+'<br><small>'+esc(k.tag)+'</small></span><span class="num">'+COIN+' '+fmt(k.balance)+'</span></button>'}).join(''):'<div class="empty">No kid matches that.</div>';
+      clearTimeout(timer);
+      var q=inp.value.trim();
+      if(!q){seq++;res.innerHTML='';return}
+      timer=setTimeout(async function(){
+        var my=++seq;
+        try{
+          var j=await api('find',{q:q});
+          if(my!==seq)return;
+          res.innerHTML=j.matches.length?j.matches.map(function(k){return '<button type="button" data-tag="'+esc(k.tag)+'"><span>'+esc(k.name)+'<br><small>'+esc(k.tag)+'</small></span><span class="num">'+COIN+' '+fmt(k.balance)+'</span></button>'}).join(''):'<div class="empty">No kid matches that.</div>';
+        }catch(e){if(my===seq)res.innerHTML='<div class="empty">'+esc(e.message)+'</div>'}
+      },250);
     });
     res.addEventListener('click',function(e){
       var b=e.target.closest('button[data-tag]');if(!b)return;
-      onPick(b.dataset.tag);inp.value='';res.innerHTML='';
+      onPick(b.dataset.tag);inp.value='';res.innerHTML='';seq++;
     });
   }
 
@@ -461,19 +505,23 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     $('awHint').innerHTML=(a>0?'Tap a wristband to give <b>+'+fmt(a)+'</b> points for '+esc(l)+'.':'Enter how many points each tap gives.');
     renderAwardChips();
   }
-  $('awChips').addEventListener('click',function(e){var b=e.target.closest('button[data-a]');if(!b)return;$('awAmt').value=b.dataset.a;awardHint()});
+  $('awChips').addEventListener('click',function(e){var b=e.target.closest('button[data-a]');if(!b)return;$('awAmt').value=b.dataset.a;ls('tp_awamt',b.dataset.a);awardHint()});
   $('awAmt').addEventListener('input',function(){ls('tp_awamt',$('awAmt').value);awardHint()});
   $('awLabel').addEventListener('input',function(){ls('tp_awlabel',$('awLabel').value);awardHint()});
   async function doAward(tag){
-    var k=state.kids[tag];
-    if(!k){flash('bad','This wristband is not registered','Sign the kid up in Roster first.');$('rgTag').value=tag;return}
     var a=Math.floor(Number($('awAmt').value)),l=$('awLabel').value.trim()||'Game';
     if(!(a>0)){flash('warn','Set the points per tap first');return}
     var now=Date.now(),last=Number(ls('tp_aw_'+tag)||0);
-    if(last&&now-last<3000){flash('warn','Already given',k.name+' just got points. Wait a few seconds to tap again.');return}
+    if(last&&now-last<3000){flash('warn','Already given','That kid just got points. Wait a few seconds to tap again.');return}
     ls('tp_aw_'+tag,String(now));
-    try{var nb=await applyDelta(tag,a,l);flash('earn','+'+fmt(a)+' for '+k.name,'Balance is now '+fmt(nb)+' points')}
-    catch(e){ls('tp_aw_'+tag,null);flash('bad',e.message)}
+    try{
+      var j=await applyDelta(tag,a,l);
+      flash('earn','+'+fmt(a)+' for '+j.name,'Balance is now '+fmt(j.balance)+' points');
+    }catch(e){
+      ls('tp_aw_'+tag,null);
+      flash('bad',e.message,state.role==='admin'?'Sign the kid up in Admin first.':'Ask an admin to sign this wristband up.');
+      if(state.role==='admin')$('rgTag').value=tag;
+    }
   }
   wireSearch('awSearch','awResults',doAward);
 
@@ -489,19 +537,29 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     if(state.co.custom)parts.push('Other');
     return parts.join(', ').slice(0,80)||'Purchase';
   }
-  function pickCheckout(tag){
-    if(!state.kids[tag]){flash('bad','This wristband is not registered','Sign the kid up in Roster first.');return}
-    state.co.tag=tag;renderCheckout();
+  function cartItems(){
+    var out=[];
+    state.menu.forEach(function(it){var q=state.co.cart[it.name];if(q)out.push({name:it.name,qty:q,cost:it.cost})});
+    if(state.co.custom)out.push({name:'Other',qty:1,cost:state.co.custom});
+    return out;
+  }
+  async function pickCheckout(tag){
+    try{
+      var j=await api('lookup',{tag:tag});
+      if(!j.found){flash('bad','This wristband is not registered',state.role==='admin'?'Sign the kid up in Admin first.':'Ask an admin to sign this wristband up.');return}
+      state.co.kid={tag:j.tag,name:j.name,balance:j.balance};renderCheckout();
+    }catch(e){flash('bad',e.message)}
   }
   function renderCheckout(){
-    var k=state.co.tag&&state.kids[state.co.tag];
+    var k=state.co.kid;
+    if(k&&state.kids[k.tag])k.balance=state.kids[k.tag].balance;
     $('coKid').innerHTML=k
       ?'<div class="kidbar"><div><h3>Paying</h3><div class="nm" style="margin-top:6px">'+esc(k.name)+'</div></div><div class="num" style="font-size:26px">'+COIN+' '+fmt(k.balance)+'</div></div>'
       :'<div class="empty">Tap a wristband to start a purchase.</div>';
     $('coMenu').innerHTML=state.menu.length?state.menu.map(function(it,i){
       var q=state.co.cart[it.name]||0;
       return '<button type="button" class="item" data-i="'+i+'"><span class="nm">'+esc(it.name)+'</span><span class="cost">'+COIN+' '+fmt(it.cost)+'</span>'+(q?'<span class="qty">×'+q+'</span>':'')+'</button>';
-    }).join(''):'<div class="empty" style="grid-column:1/-1">No prizes yet. Add some under Roster, or use Other amount.</div>';
+    }).join(''):'<div class="empty" style="grid-column:1/-1">No prizes yet. The admin adds them under Admin, or use Other amount.</div>';
     var lines=[];
     state.menu.forEach(function(it,i){var q=state.co.cart[it.name];if(q)lines.push('<div class="cartline"><span>'+esc(it.name)+' ×'+q+'</span><span class="num">'+fmt(q*it.cost)+'</span><button type="button" data-minus="'+i+'" aria-label="Remove one '+esc(it.name)+'">−</button></div>')});
     if(state.co.custom)lines.push('<div class="cartline"><span>Other amount</span><span class="num">'+fmt(state.co.custom)+'</span><button type="button" data-minus="custom" aria-label="Remove other amount">−</button></div>');
@@ -531,19 +589,39 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     state.co.custom=(state.co.custom||0)+v;$('coCustom').value='';renderCheckout();
   };
   $('coCharge').onclick=async function(){
-    var tag=state.co.tag,k=state.kids[tag],t=cartTotal();
+    var k=state.co.kid,t=cartTotal();
     if(!k||t<=0)return;
     $('coCharge').disabled=true;
     try{
-      var nb=await applyDelta(tag,-t,cartLabel());
-      flash('spend','Charged '+fmt(t)+' points to '+k.name,'Balance is now '+fmt(nb)+' points');
-      state.co={tag:null,cart:{},custom:0};
+      var j=await applyDelta(k.tag,-t,cartLabel(),{items:cartItems()});
+      flash('spend','Charged '+fmt(t)+' points to '+j.name,'Balance is now '+fmt(j.balance)+' points');
+      state.co={kid:null,cart:{},custom:0};
     }catch(e){flash('bad',e.message)}
     renderCheckout();
   };
   wireSearch('coSearch','coResults',pickCheckout);
 
-  /* ---------- ROSTER ---------- */
+  /* ---------- ADMIN: overview ---------- */
+  function bars(rows,kind,emptyMsg){
+    if(!rows.length)return '<div class="empty">'+emptyMsg+'</div>';
+    rows.sort(function(a,b){return b.v-a.v});
+    var max=rows[0].v||1;
+    return rows.slice(0,12).map(function(r){
+      return '<div class="barrow"><div class="barlab"><span>'+esc(r.n)+'</span><b>'+esc(r.t)+'</b></div><div class="track"><i class="'+kind+'" style="width:'+Math.max(3,Math.round(r.v/max*100))+'%"></i></div></div>';
+    }).join('');
+  }
+  function renderOverview(){
+    var s=state.stats||{earned:0,spent:0,tx:0,stations:{},items:{}};
+    var ks=Object.keys(state.kids).map(function(t){return state.kids[t]});
+    var held=ks.reduce(function(a,k){return a+(k.balance||0)},0);
+    $('tiles').innerHTML=[['Kids',ks.length],['Points held',held],['Awarded',s.earned],['Spent',s.spent],['Taps',s.tx]].map(function(t){return '<div class="tile"><span>'+t[0]+'</span><b>'+fmt(t[1])+'</b></div>'}).join('');
+    $('stations').innerHTML=bars(Object.keys(s.stations).map(function(n){return {n:n,v:s.stations[n],t:fmt(s.stations[n])+' pts'}}),'earn','No points given yet.');
+    $('prizes').innerHTML=bars(Object.keys(s.items).map(function(n){return {n:n,v:s.items[n].qty,t:'×'+fmt(s.items[n].qty)+' · '+fmt(s.items[n].pts)+' pts'}}),'spend','Nothing bought yet.');
+    var top=ks.slice().sort(function(a,b){return b.balance-a.balance}).filter(function(k){return k.balance>0}).slice(0,5);
+    $('topbal').innerHTML=top.length?top.map(function(k){return '<div class="row"><span class="rowname"><span class="n">'+esc(k.name)+'</span></span><span class="num">'+COIN+' '+fmt(k.balance)+'</span></div>'}).join(''):'<div class="empty">Nobody has points yet.</div>';
+  }
+
+  /* ---------- ADMIN: roster ---------- */
   async function tagInRoster(tag){
     if(state.linkMode&&state.rsSel){
       var oldTag=state.rsSel,k=state.kids[oldTag];
@@ -601,37 +679,6 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     }).join(''):'<div class="empty">No items yet. Add the prizes and candy kids can buy.</div>';
   }
 
-  function selectKid(tag){
-    state.rsSel=tag;state.linkMode=false;setLinkBtn();
-    var k=state.kids[tag],d=$('rsDetail');
-    if(!k){d.hidden=true;return}
-    d.hidden=false;
-    $('rsTitle').textContent=k.name;$('rsName').value=k.name;$('rsTag').textContent=k.tag;
-    $('rsUrl').textContent=tagAddr(k.tag);$('rsCopyUrl').dataset.copy=tagAddr(k.tag);
-    renderDetailBal();renderRoster();
-  }
-  function renderDetailBal(){var k=state.kids[state.rsSel];$('rsBal').innerHTML=k?COIN+' '+fmt(k.balance):''}
-  async function adjust(sign){
-    var tag=state.rsSel,k=state.kids[tag],a=Math.floor(Number($('rsAmt').value));
-    if(!k)return;if(!(a>0)){flash('warn','Enter a number of points above zero');return}
-    var note=$('rsNote').value.trim()||(sign>0?'Added by staff':'Taken by staff');
-    try{var nb=await applyDelta(tag,sign*a,note);flash(sign>0?'earn':'spend',(sign>0?'Added ':'Took ')+fmt(a)+(sign>0?' to ':' from ')+k.name,'Balance is now '+fmt(nb)+' points');$('rsAmt').value='';$('rsNote').value=''}
-    catch(e){flash('bad',e.message)}
-  }
-  $('rsAdd').onclick=function(){adjust(1)};$('rsTake').onclick=function(){adjust(-1)};
-  $('rsSave').onclick=async function(){
-    var tag=state.rsSel,n=$('rsName').value.trim();if(!state.kids[tag]||!n)return;
-    try{await write('rename',{tag:tag,name:n});await refresh();$('rsTitle').textContent=n;flash('earn','Name saved')}catch(e){flash('bad',e.message)}
-  };
-  var delArm=null;
-  $('rsDel').onclick=async function(){
-    var tag=state.rsSel,k=state.kids[tag];if(!k)return;
-    if(!delArm){$('rsDel').textContent='Tap again to remove '+k.name;delArm=setTimeout(function(){delArm=null;$('rsDel').textContent='Remove this kid'},4000);return}
-    clearTimeout(delArm);delArm=null;$('rsDel').textContent='Remove this kid';
-    try{await write('remove',{tag:tag});state.rsSel=null;await refresh();selectKid(null);flash('warn','Removed '+k.name)}catch(e){flash('bad',e.message)}
-  };
-  $('rsSearch').addEventListener('input',renderRoster);
-  /* ---- tag addresses and test kids ---- */
   function tagAddr(tag){return location.origin+'/?t='+encodeURIComponent(tag)}
   function renderTestAddrs(){
     var h='';
@@ -660,11 +707,45 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
       flash('earn',made?'Added '+made+' test kid'+(made>1?'s':''):'All 5 test kids are ready','Test 1 to Test 5 use the IDs test-1 to test-5.');
     }catch(e){flash('bad',e.message)}
   };
+
+  function selectKid(tag){
+    state.rsSel=tag;state.linkMode=false;setLinkBtn();
+    var k=state.kids[tag],d=$('rsDetail');
+    if(!k){d.hidden=true;return}
+    d.hidden=false;
+    $('rsTitle').textContent=k.name;$('rsName').value=k.name;$('rsTag').textContent=k.tag;
+    $('rsUrl').textContent=tagAddr(k.tag);$('rsCopyUrl').dataset.copy=tagAddr(k.tag);
+    renderDetailBal();renderRoster();
+  }
+  function renderDetailBal(){var k=state.kids[state.rsSel];$('rsBal').innerHTML=k?COIN+' '+fmt(k.balance):''}
+  async function adjust(sign){
+    var tag=state.rsSel,k=state.kids[tag],a=Math.floor(Number($('rsAmt').value));
+    if(!k)return;if(!(a>0)){flash('warn','Enter a number of points above zero');return}
+    var note=$('rsNote').value.trim()||(sign>0?'Added by admin':'Taken by admin');
+    try{
+      var j=await applyDelta(tag,sign*a,note,{kind:'adjust'});
+      flash(sign>0?'earn':'spend',(sign>0?'Added ':'Took ')+fmt(a)+(sign>0?' to ':' from ')+k.name,'Balance is now '+fmt(j.balance)+' points');
+      $('rsAmt').value='';$('rsNote').value='';
+    }catch(e){flash('bad',e.message)}
+  }
+  $('rsAdd').onclick=function(){adjust(1)};$('rsTake').onclick=function(){adjust(-1)};
+  $('rsSave').onclick=async function(){
+    var tag=state.rsSel,n=$('rsName').value.trim();if(!state.kids[tag]||!n)return;
+    try{await write('rename',{tag:tag,name:n});await refresh();$('rsTitle').textContent=n;flash('earn','Name saved')}catch(e){flash('bad',e.message)}
+  };
+  var delArm=null;
+  $('rsDel').onclick=async function(){
+    var tag=state.rsSel,k=state.kids[tag];if(!k)return;
+    if(!delArm){$('rsDel').textContent='Tap again to remove '+k.name;delArm=setTimeout(function(){delArm=null;$('rsDel').textContent='Remove this kid'},4000);return}
+    clearTimeout(delArm);delArm=null;$('rsDel').textContent='Remove this kid';
+    try{await write('remove',{tag:tag});state.rsSel=null;await refresh();selectKid(null);flash('warn','Removed '+k.name)}catch(e){flash('bad',e.message)}
+  };
+  $('rsSearch').addEventListener('input',renderRoster);
   function renderRoster(){
     renderTestAddrs();
     var q=$('rsSearch').value.trim().toLowerCase();
     var all=Object.keys(state.kids).map(function(t){return state.kids[t]});
-    $('seedCard').hidden=!(state.pw&&!all.length);
+    $('seedCard').hidden=!(state.role==='admin'&&!all.length);
     var m=all.filter(function(k){return !q||(k.name||'').toLowerCase().indexOf(q)>-1||(k.tag||'').indexOf(q)>-1})
       .sort(function(a,b){return (a.name||'').localeCompare(b.name||'',undefined,{numeric:true})});
     $('rsCount').textContent=all.length+(all.length===1?' kid':' kids')+(q?' · '+m.length+' shown':'');
@@ -689,7 +770,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   }
 
   function renderAll(){
-    renderKid();renderCheckout();renderRoster();renderLedger();renderMenuList();
+    renderKid();renderCheckout();renderRoster();renderOverview();renderLedger();renderMenuList();
     if(state.rsSel&&!state.kids[state.rsSel]){state.rsSel=null;$('rsDetail').hidden=true}
     else renderDetailBal();
   }
@@ -699,12 +780,18 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   if(savedAmt)$('awAmt').value=savedAmt;
   if(savedLabel)$('awLabel').value=savedLabel;
   awardHint();renderAll();
-  showTab(['kid','award','checkout','roster'].indexOf(savedTab)>-1?savedTab:'kid');
+  state.tab=['kid','award','checkout','roster'].indexOf(savedTab)>-1?savedTab:'kid';
+  showTab(state.tab);
   (async function(){
     var pw=ls('tp_pw');
     if(pw){
       state.pw=pw;
-      try{await refresh();onUnlocked()}catch(_){state.pw=null;ls('tp_pw',null);showTab(state.tab)}
+      try{
+        var j=await api('whoami');
+        state.role=j.role;
+        if(state.role==='admin')await refresh();else await loadMenu();
+        onUnlocked();
+      }catch(_){state.pw=null;state.role=null;ls('tp_pw',null);showTab(state.tab)}
     }
     runPending();
   })();
