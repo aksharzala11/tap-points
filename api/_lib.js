@@ -10,6 +10,17 @@ const redis = new Redis({
 
 const TAG_RE = /^[a-z0-9:_.\-@+~]{1,100}$/;
 
+// With automaticDeserialization off, HGETALL comes back as a flat list
+// [field, value, field, value, ...]. Turn it into a plain object (or null when empty).
+function toObj(raw) {
+  if (!raw) return null;
+  if (!Array.isArray(raw)) return Object.keys(raw).length ? raw : null;
+  if (raw.length === 0) return null;
+  const o = {};
+  for (let i = 0; i + 1 < raw.length; i += 2) o[String(raw[i])] = raw[i + 1];
+  return o;
+}
+
 function httpErr(status, message) {
   const e = new Error(message);
   e.status = status;
@@ -57,4 +68,4 @@ async function change(tag, delta, label, kind) {
   return bal;
 }
 
-module.exports = { redis, TAG_RE, httpErr, checkPassword, change };
+module.exports = { redis, TAG_RE, toObj, httpErr, checkPassword, change };

@@ -1,4 +1,4 @@
-const { redis, TAG_RE } = require('./_lib');
+const { redis, TAG_RE, toObj } = require('./_lib');
 
 // Public: a kid taps their wristband and sees their own name and balance.
 // There is deliberately no way to list or search kids here.
@@ -7,7 +7,7 @@ module.exports = async function handler(req, res) {
   const tag = String((req.query && req.query.tag) || '').trim().toLowerCase();
   if (!TAG_RE.test(tag)) return res.status(200).json({ found: false });
   try {
-    const k = await redis.hgetall('kid:' + tag);
+    const k = toObj(await redis.hgetall('kid:' + tag));
     if (!k || !k.name) return res.status(200).json({ found: false });
     const raw = await redis.lrange('recent:' + tag, 0, 5);
     const recent = raw

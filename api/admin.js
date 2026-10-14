@@ -1,4 +1,4 @@
-const { redis, TAG_RE, httpErr, checkPassword, change } = require('./_lib');
+const { redis, TAG_RE, toObj, httpErr, checkPassword, change } = require('./_lib');
 
 const MAX_POINTS = 100000;
 const int = (v) => (Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : NaN);
@@ -21,6 +21,7 @@ const actions = {
       tags.forEach((t) => p.hgetall('kid:' + t));
       const rows = await p.exec();
       kids = rows
+        .map(toObj)
         .filter((h) => h && h.name)
         .map((h) => ({ tag: h.tag, name: h.name, balance: Number(h.balance) }));
     }
