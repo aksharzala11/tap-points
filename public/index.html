@@ -224,19 +224,6 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
       <div id="topbal"></div>
     </div>
 
-    <div class="card" id="seedCard" hidden>
-      <h2>Try it with test data</h2>
-      <p class="muted">Nobody is registered yet. This adds Test 1 to Test 5 with 0 points, plus Candy 1 (25), Candy 2 (15), Prize 1 (5) and Prize 2 (20).</p>
-      <button class="btn" id="seedBtn" type="button">Load 5 test kids and menu</button>
-    </div>
-
-    <div class="card">
-      <h2>Test tags</h2>
-      <p class="muted">Five test kids with fixed IDs. Write each address onto a tag, so tag 1 is Test 1, tag 2 is Test 2, and so on. No registering needed.</p>
-      <div id="testAddrs"></div>
-      <button class="btn" id="testBtn" type="button">Add test kids 1 to 5</button>
-    </div>
-
     <div class="card">
       <h2>Sign up a kid</h2>
       <div class="grid2">
@@ -246,7 +233,6 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
       <div class="field"><label for="rgTag">Wristband ID (tap a wristband to fill it)</label><input type="text" class="mono" id="rgTag" autocomplete="off" placeholder="04:a1:b2:c3:d4:e5:f6"></div>
       <div class="btns">
         <button class="btn" id="rgBtn" type="button">Register</button>
-        <button class="btn ghost" id="rgTest" type="button">Make a test ID</button>
       </div>
     </div>
 
@@ -490,7 +476,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     if(k.error){el.innerHTML=idleHTML('Could not load points','Check the connection and tap again.');return}
     if(!k.found){el.innerHTML=idleHTML('Not signed up yet','Ask a helper at the desk to register this wristband.');return}
     var rec=(k.recent||[]).map(function(r){return '<li><span>'+esc(r.l||'')+'</span><b class="'+(r.d>0?'pos':'neg')+'">'+(r.d>0?'+':'−')+fmt(Math.abs(r.d))+'</b></li>'}).join('');
-    el.innerHTML='<p class="hello">Hi, '+esc(k.name)+'</p><div class="balrow"><svg class="coin lg"><use href="#coin"/></svg><div class="bal">'+fmt(k.balance)+'</div></div><p class="muted">points</p>'+(rec?'<h3 style="margin-top:14px">Recent</h3><ul class="recent">'+rec+'</ul>':'');
+    el.innerHTML='<p class="hello">'+(k.name?'Hi, '+esc(k.name):'Welcome!')+'</p><div class="balrow"><svg class="coin lg"><use href="#coin"/></svg><div class="bal">'+fmt(k.balance)+'</div></div><p class="muted">points</p>'+(rec?'<h3 style="margin-top:14px">Recent</h3><ul class="recent">'+rec+'</ul>':'');
   }
   wireSearch('kidSearch','kidResults',showKid);
 
@@ -546,7 +532,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   async function pickCheckout(tag){
     try{
       var j=await api('lookup',{tag:tag});
-      if(!j.found){flash('bad','This wristband is not registered',state.role==='admin'?'Sign the kid up in Admin first.':'Ask an admin to sign this wristband up.');return}
+      if(!j.found){flash('bad','Could not read this wristband');return}
       state.co.kid={tag:j.tag,name:j.name,balance:j.balance};renderCheckout();
     }catch(e){flash('bad',e.message)}
   }
@@ -644,7 +630,6 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     if(!state.scanning&&state.linkMode===false)flash('warn','Start the NFC reader first','Use the button at the top, then try again.');
     state.linkMode=!state.linkMode;setLinkBtn();
   };
-  $('rgTest').onclick=function(){$('rgTag').value='test-'+Math.random().toString(36).slice(2,8)};
   $('rgBtn').onclick=async function(){
     var name=$('rgName').value.trim(),tag=normTag($('rgTag').value),start=Math.max(0,Math.floor(Number($('rgStart').value)||0));
     if(!name){flash('warn','Enter the kid’s name');return}
@@ -655,9 +640,6 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
       flash('earn','Registered '+name,start?'Starting with '+fmt(start)+' points':'Starting at 0 points');
       $('rgName').value='';$('rgTag').value='';
     }catch(e){flash('bad',e.message)}
-  };
-  $('seedBtn').onclick=async function(){
-    try{await write('seed');await refresh();flash('earn','Test data loaded','Test 1 to Test 5 and the prize menu are ready.')}catch(e){flash('bad',e.message)}
   };
   async function saveMenu(items){
     var j=await write('setMenu',{items:items});
@@ -680,33 +662,12 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   }
 
   function tagAddr(tag){return location.origin+'/?t='+encodeURIComponent(tag)}
-  function renderTestAddrs(){
-    var h='';
-    for(var i=1;i<=5;i++){
-      var tag='test-'+i,ok=!!state.kids[tag];
-      h+='<div class="row"><span class="rowname"><span class="n">Test '+i+' <span class="muted" style="font-weight:500">'+(ok?'ready':'not added yet')+'</span></span><small>'+esc(tagAddr(tag))+'</small></span><button type="button" class="btn ghost small" data-copy="'+esc(tagAddr(tag))+'">Copy</button></div>';
-    }
-    $('testAddrs').innerHTML=h;
-  }
   document.addEventListener('click',function(e){
     var b=e.target.closest('button[data-copy]');if(!b||!b.dataset.copy)return;
     var txt=b.dataset.copy;
     try{navigator.clipboard.writeText(txt).then(function(){flash('earn','Address copied','Paste it into NFC Tools.')},function(){flash('warn','Copy was blocked','Select the address and copy it by hand.')})}
     catch(_){flash('warn','Copy was blocked','Select the address and copy it by hand.')}
   });
-  $('testBtn').onclick=async function(){
-    var made=0;
-    try{
-      for(var i=1;i<=5;i++){
-        var tag='test-'+i;
-        if(state.kids[tag])continue;
-        await write('register',{name:'Test '+i,tag:tag,start:0});made++;
-      }
-      if(!state.menu.length)await saveMenu([{name:'Candy 1',cost:25},{name:'Candy 2',cost:15},{name:'Prize 1',cost:5},{name:'Prize 2',cost:20}]);
-      await refresh();
-      flash('earn',made?'Added '+made+' test kid'+(made>1?'s':''):'All 5 test kids are ready','Test 1 to Test 5 use the IDs test-1 to test-5.');
-    }catch(e){flash('bad',e.message)}
-  };
 
   function selectKid(tag){
     state.rsSel=tag;state.linkMode=false;setLinkBtn();
@@ -742,10 +703,8 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   };
   $('rsSearch').addEventListener('input',renderRoster);
   function renderRoster(){
-    renderTestAddrs();
     var q=$('rsSearch').value.trim().toLowerCase();
     var all=Object.keys(state.kids).map(function(t){return state.kids[t]});
-    $('seedCard').hidden=!(state.role==='admin'&&!all.length);
     var m=all.filter(function(k){return !q||(k.name||'').toLowerCase().indexOf(q)>-1||(k.tag||'').indexOf(q)>-1})
       .sort(function(a,b){return (a.name||'').localeCompare(b.name||'',undefined,{numeric:true})});
     $('rsCount').textContent=all.length+(all.length===1?' kid':' kids')+(q?' · '+m.length+' shown':'');
