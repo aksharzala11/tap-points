@@ -8,7 +8,8 @@ module.exports = async function handler(req, res) {
   if (!TAG_RE.test(tag)) return res.status(200).json({ found: false });
   try {
     const k = toObj(await redis.hgetall('kid:' + tag));
-    if (!k || !k.name) return res.status(200).json({ found: false });
+    // Unknown wristband: show a fresh 0 balance. It is added to the system on its first award.
+    if (!k || !k.name) return res.status(200).json({ found: true, name: '', balance: 0, recent: [] });
     const raw = await redis.lrange('recent:' + tag, 0, 5);
     const recent = raw
       .map((s) => {

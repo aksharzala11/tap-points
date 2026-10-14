@@ -27,6 +27,23 @@ async function readMenu() {
   }
 }
 
+// First scan of an unknown wristband: create the kid automatically.
+// The name is a placeholder like "Kid 3F9A1"; an admin can rename it later.
+async function ensureKid(tag) {
+  const alnum = tag.replace(/[^a-z0-9]/g, '').toUpperCase();
+  const name = 'Kid ' + (alnum.slice(-5) || 'NEW');
+  const made = Number(await redis.hsetnx('kid:' + tag, 'name', name)) === 1;
+  if (!made) return false;
+  const p = redis.pipeline();
+  p.hset('kid:' + tag, { tag, created: Date.now() });
+  p.hsetnx('kid:' + tag, 'balance', 0);
+  p.hset('idx', { [tag]: name });
+  p.hsetnx('bal', tag, 0);
+  p.sadd('kids', tag);
+  await p.exec();
+  return true;
+}
+
 // Rebuild the quick name and balance indexes from the kid records.
 async function rebuild() {
   const tags = await redis.smembers('kids');
@@ -63,7 +80,6 @@ const NEEDS = {
   remove: 'admin',
   relink: 'admin',
   setMenu: 'admin',
-  seed: 'admin',
 };
 
 const actions = {
@@ -79,12 +95,13 @@ const actions = {
   async lookup(b) {
     const tag = cleanTag(b.tag);
     need(TAG_RE.test(tag), 'Bad wristband ID.');
+    const isNew = await ensureKid(tag);
     const p = redis.pipeline();
     p.hget('kid:' + tag, 'name');
     p.hget('kid:' + tag, 'balance');
     const [name, balance] = await p.exec();
     if (!name) return { found: false };
-    return { found: true, tag, name, balance: Number(balance) || 0 };
+    return { found: true, tag, name, balance: Number(balance) || 0, isNew };
   },
 
   // Name search for helpers. Returns at most 8 kids, never the full roster.
@@ -129,6 +146,7 @@ const actions = {
       }));
       items = items.filter((i) => i.name && i.qty > 0 && i.qty <= 99 && i.cost > 0 && i.cost <= MAX_POINTS);
     }
+    await ensureKid(tag);
     return change(tag, delta, label, kind, items);
   },
 
@@ -244,25 +262,6 @@ const actions = {
     return { items };
   },
 
-  // One-time starter data for trying the system out.
-  async seed() {
-    need(Number(await redis.scard('kids')) === 0, 'Remove all kids before loading test data.', 409);
-    const p = redis.pipeline();
-    for (let i = 1; i <= 5; i++) {
-      p.hset('kid:test-' + i, { name: 'Test ' + i, tag: 'test-' + i, balance: 0, created: Date.now() });
-      p.hset('idx', { ['test-' + i]: 'Test ' + i });
-      p.hset('bal', { ['test-' + i]: 0 });
-      p.sadd('kids', 'test-' + i);
-    }
-    p.set('menu', JSON.stringify([
-      { name: 'Candy 1', cost: 25 },
-      { name: 'Candy 2', cost: 15 },
-      { name: 'Prize 1', cost: 5 },
-      { name: 'Prize 2', cost: 20 },
-    ]));
-    await p.exec();
-    return {};
-  },
 };
 
 module.exports = async function handler(req, res) {
