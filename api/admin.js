@@ -1,30 +1,144 @@
-const { redis, TAG_RE, toObj, httpErr, checkPassword, change } = require('./_lib');
+const { redis, TAG_RE, toObj, httpErr, getRole, change } = require('./_lib');
 
 const MAX_POINTS = 100000;
+const STAFF_MAX = 1000;
 const int = (v) => (Number.isFinite(Number(v)) ? Math.trunc(Number(v)) : NaN);
 const cleanTag = (v) => String(v || '').trim().toLowerCase();
 const need = (cond, msg, status) => {
   if (!cond) throw httpErr(status || 400, msg);
+};
+const byName = (a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true });
+const nums = (o) => {
+  const out = {};
+  Object.keys(o || {}).forEach((k) => (out[k] = Number(o[k]) || 0));
+  return out;
 };
 
 async function exists(key) {
   return Number(await redis.exists(key)) > 0;
 }
 
-const actions = {
-  // Everything the staff screens need in one call.
-  async list() {
-    const tags = await redis.smembers('kids');
-    let kids = [];
-    if (tags.length) {
-      const p = redis.pipeline();
-      tags.forEach((t) => p.hgetall('kid:' + t));
-      const rows = await p.exec();
-      kids = rows
-        .map(toObj)
-        .filter((h) => h && h.name)
-        .map((h) => ({ tag: h.tag, name: h.name, balance: Number(h.balance) }));
+async function readMenu() {
+  try {
+    const m = JSON.parse((await redis.get('menu')) || '[]');
+    return Array.isArray(m) ? m : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+// Rebuild the quick name and balance indexes from the kid records.
+async function rebuild() {
+  const tags = await redis.smembers('kids');
+  let rows = [];
+  if (tags.length) {
+    const p = redis.pipeline();
+    tags.forEach((t) => p.hgetall('kid:' + t));
+    rows = (await p.exec()).map(toObj);
+  }
+  const p2 = redis.pipeline();
+  p2.del('idx');
+  p2.del('bal');
+  rows.forEach((h, i) => {
+    if (h && h.name) {
+      p2.hset('idx', { [h.tag || tags[i]]: h.name });
+      p2.hset('bal', { [h.tag || tags[i]]: Number(h.balance) || 0 });
+    } else {
+      p2.srem('kids', tags[i]);
     }
+  });
+  await p2.exec();
+}
+
+// What each action needs: 'staff' (helpers and admin) or 'admin' (admin only).
+const NEEDS = {
+  whoami: 'staff',
+  menu: 'staff',
+  lookup: 'staff',
+  find: 'staff',
+  change: 'staff',
+  list: 'admin',
+  register: 'admin',
+  rename: 'admin',
+  remove: 'admin',
+  relink: 'admin',
+  setMenu: 'admin',
+  seed: 'admin',
+};
+
+const actions = {
+  async whoami(b, role) {
+    return { role };
+  },
+
+  async menu() {
+    return { items: await readMenu() };
+  },
+
+  // One kid by wristband, for the checkout screen.
+  async lookup(b) {
+    const tag = cleanTag(b.tag);
+    need(TAG_RE.test(tag), 'Bad wristband ID.');
+    const p = redis.pipeline();
+    p.hget('kid:' + tag, 'name');
+    p.hget('kid:' + tag, 'balance');
+    const [name, balance] = await p.exec();
+    if (!name) return { found: false };
+    return { found: true, tag, name, balance: Number(balance) || 0 };
+  },
+
+  // Name search for helpers. Returns at most 8 kids, never the full roster.
+  async find(b) {
+    const q = String(b.q || '').trim().toLowerCase().slice(0, 40);
+    if (!q) return { matches: [] };
+    const idx = toObj(await redis.hgetall('idx')) || {};
+    const hits = Object.keys(idx)
+      .filter((t) => String(idx[t]).toLowerCase().includes(q) || t.includes(q))
+      .map((t) => ({ tag: t, name: idx[t] }))
+      .sort(byName)
+      .slice(0, 8);
+    if (hits.length) {
+      const p = redis.pipeline();
+      hits.forEach((h) => p.hget('bal', h.tag));
+      const bals = await p.exec();
+      hits.forEach((h, i) => (h.balance = Number(bals[i]) || 0));
+    }
+    return { matches: hits };
+  },
+
+  // Positive delta awards points, negative delta charges them.
+  async change(b, role) {
+    const tag = cleanTag(b.tag);
+    const delta = int(b.delta);
+    const limit = role === 'admin' ? MAX_POINTS : STAFF_MAX;
+    need(TAG_RE.test(tag), 'Bad wristband ID.');
+    need(Number.isFinite(delta) && delta !== 0, 'Points must be a whole number.');
+    need(Math.abs(delta) <= limit, 'That is more than ' + limit + ' points. Ask an admin.', 403);
+    const label = String(b.label || (delta > 0 ? 'Points' : 'Purchase')).trim().slice(0, 80) || 'Points';
+    let kind = delta > 0 ? 'earn' : 'spend';
+    if (b.kind === 'adjust') {
+      need(role === 'admin', 'Corrections need the admin password.', 403);
+      kind = 'adjust';
+    }
+    let items = [];
+    if (kind === 'spend' && Array.isArray(b.items)) {
+      items = b.items.slice(0, 20).map((i) => ({
+        name: String(i.name || '').trim().slice(0, 40),
+        qty: int(i.qty),
+        cost: int(i.cost),
+      }));
+      items = items.filter((i) => i.name && i.qty > 0 && i.qty <= 99 && i.cost > 0 && i.cost <= MAX_POINTS);
+    }
+    return change(tag, delta, label, kind, items);
+  },
+
+  // Everything the admin dashboard needs, in a fixed handful of commands.
+  async list() {
+    const [nIdx, nSet] = [Number(await redis.hlen('idx')), Number(await redis.scard('kids'))];
+    if (nIdx !== nSet) await rebuild();
+    const idx = toObj(await redis.hgetall('idx')) || {};
+    const bal = toObj(await redis.hgetall('bal')) || {};
+    const kids = Object.keys(idx).map((tag) => ({ tag, name: idx[tag], balance: Number(bal[tag]) || 0 }));
     const ledger = (await redis.lrange('ledger', 0, 29))
       .map((s) => {
         try {
@@ -34,22 +148,18 @@ const actions = {
         }
       })
       .filter(Boolean);
-    let menu = [];
-    try {
-      menu = JSON.parse((await redis.get('menu')) || '[]');
-    } catch (_) {}
-    return { kids, ledger, menu };
-  },
-
-  // Positive delta awards points, negative delta charges them.
-  async change(b) {
-    const tag = cleanTag(b.tag);
-    const delta = int(b.delta);
-    need(TAG_RE.test(tag), 'Bad wristband ID.');
-    need(Number.isFinite(delta) && delta !== 0 && Math.abs(delta) <= MAX_POINTS, 'Points must be a whole number.');
-    const label = String(b.label || (delta > 0 ? 'Points' : 'Purchase')).slice(0, 80);
-    const balance = await change(tag, delta, label, delta > 0 ? 'earn' : 'spend');
-    return { balance };
+    const s = nums(toObj(await redis.hgetall('stats')));
+    const stations = nums(toObj(await redis.hgetall('stats:stations')));
+    const itemQty = nums(toObj(await redis.hgetall('stats:items')));
+    const itemPts = nums(toObj(await redis.hgetall('stats:itempts')));
+    const items = {};
+    Object.keys(itemQty).forEach((n) => (items[n] = { qty: itemQty[n], pts: itemPts[n] || 0 }));
+    return {
+      kids,
+      ledger,
+      menu: await readMenu(),
+      stats: { earned: s.earned || 0, spent: s.spent || 0, tx: s.tx || 0, stations, items },
+    };
   },
 
   async register(b) {
@@ -63,9 +173,13 @@ const actions = {
       const other = await redis.hget('kid:' + tag, 'name');
       throw httpErr(409, 'That wristband already belongs to ' + other + '.');
     }
-    await redis.hset('kid:' + tag, { name, tag, balance: 0, created: Date.now() });
-    await redis.sadd('kids', tag);
-    if (start > 0) await change(tag, start, 'Starting points', 'earn');
+    const p = redis.pipeline();
+    p.hset('kid:' + tag, { name, tag, balance: 0, created: Date.now() });
+    p.hset('idx', { [tag]: name });
+    p.hset('bal', { [tag]: 0 });
+    p.sadd('kids', tag);
+    await p.exec();
+    if (start > 0) await change(tag, start, 'Starting points', 'adjust');
     return {};
   },
 
@@ -75,7 +189,10 @@ const actions = {
     need(name, 'Enter a name.');
     need(TAG_RE.test(tag), 'Bad wristband ID.');
     need(await exists('kid:' + tag), 'Kid not found.', 404);
-    await redis.hset('kid:' + tag, { name });
+    const p = redis.pipeline();
+    p.hset('kid:' + tag, { name });
+    p.hset('idx', { [tag]: name });
+    await p.exec();
     return {};
   },
 
@@ -85,6 +202,8 @@ const actions = {
     const p = redis.pipeline();
     p.del('kid:' + tag);
     p.del('recent:' + tag);
+    p.hdel('idx', tag);
+    p.hdel('bal', tag);
     p.srem('kids', tag);
     await p.exec();
     return {};
@@ -104,7 +223,13 @@ const actions = {
     await redis.rename('kid:' + oldTag, 'kid:' + newTag);
     await redis.hset('kid:' + newTag, { tag: newTag });
     if (await exists('recent:' + oldTag)) await redis.rename('recent:' + oldTag, 'recent:' + newTag);
+    const nm = await redis.hget('kid:' + newTag, 'name');
+    const bl = await redis.hget('kid:' + newTag, 'balance');
     const p = redis.pipeline();
+    p.hdel('idx', oldTag);
+    p.hdel('bal', oldTag);
+    p.hset('idx', { [newTag]: nm });
+    p.hset('bal', { [newTag]: Number(bl) || 0 });
     p.srem('kids', oldTag);
     p.sadd('kids', newTag);
     await p.exec();
@@ -125,6 +250,8 @@ const actions = {
     const p = redis.pipeline();
     for (let i = 1; i <= 5; i++) {
       p.hset('kid:test-' + i, { name: 'Test ' + i, tag: 'test-' + i, balance: 0, created: Date.now() });
+      p.hset('idx', { ['test-' + i]: 'Test ' + i });
+      p.hset('bal', { ['test-' + i]: 0 });
       p.sadd('kids', 'test-' + i);
     }
     p.set('menu', JSON.stringify([
@@ -142,18 +269,21 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST.' });
   try {
-    const ok = checkPassword(req);
-    if (ok === 'unset') {
+    const role = getRole(req);
+    if (role === 'unset') {
       return res.status(500).json({ error: 'ADMIN_PASSWORD is not set. Add it in Vercel under Settings, Environment Variables, then redeploy.' });
     }
-    if (!ok) {
+    if (!role) {
       await new Promise((r) => setTimeout(r, 600));
       return res.status(401).json({ error: 'Wrong password.' });
     }
     const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : req.body || {};
-    const fn = Object.prototype.hasOwnProperty.call(actions, body.action) ? actions[body.action] : null;
-    if (!fn) return res.status(400).json({ error: 'Unknown action.' });
-    return res.status(200).json(await fn(body));
+    const name = Object.prototype.hasOwnProperty.call(actions, body.action) ? body.action : null;
+    if (!name) return res.status(400).json({ error: 'Unknown action.' });
+    if (NEEDS[name] === 'admin' && role !== 'admin') {
+      return res.status(403).json({ error: 'This needs the admin password.' });
+    }
+    return res.status(200).json(await actions[name](body, role));
   } catch (e) {
     const status = e && e.status ? e.status : 500;
     const message = e && e.status ? e.message : 'The database did not answer. Check that Upstash Redis is connected to this project.';

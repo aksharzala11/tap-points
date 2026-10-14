@@ -27,45 +27,69 @@ function httpErr(status, message) {
   return e;
 }
 
-// Returns 'unset' when ADMIN_PASSWORD is missing, otherwise true/false.
-function checkPassword(req) {
-  const real = process.env.ADMIN_PASSWORD;
-  if (!real) return 'unset';
-  const given = String(req.headers['x-admin-password'] || '');
-  const a = crypto.createHash('sha256').update(given).digest();
-  const b = crypto.createHash('sha256').update(String(real)).digest();
-  return crypto.timingSafeEqual(a, b);
+function same(a, b) {
+  const x = crypto.createHash('sha256').update(String(a)).digest();
+  const y = crypto.createHash('sha256').update(String(b)).digest();
+  return crypto.timingSafeEqual(x, y);
 }
 
-// Atomic balance change: refuses to go below zero, so two stations can never
-// overwrite each other or overspend a kid's points.
+// 'unset' when ADMIN_PASSWORD is missing, otherwise 'admin', 'staff' or false.
+// STAFF_PASSWORD is optional; without it only the admin password works.
+function getRole(req) {
+  const adminPw = process.env.ADMIN_PASSWORD;
+  if (!adminPw) return 'unset';
+  const given = String(req.headers['x-admin-password'] || '');
+  const isAdmin = same(given, adminPw);
+  const staffPw = process.env.STAFF_PASSWORD;
+  const isStaff = staffPw ? same(given, staffPw) : false;
+  return isAdmin ? 'admin' : isStaff ? 'staff' : false;
+}
+
+// Atomic balance change. It refuses to go below zero, so two stations can never
+// overwrite each other or overspend a kid's points. It also keeps the quick
+// balance index ('bal') in step so the roster can load in a handful of commands.
 const CHANGE_SCRIPT = `
 local b = redis.call('HGET', KEYS[1], 'balance')
 if not b then return {-1, 0} end
 local nb = tonumber(b) + tonumber(ARGV[1])
 if nb < 0 then return {-2, tonumber(b)} end
 redis.call('HSET', KEYS[1], 'balance', nb)
+redis.call('HSET', KEYS[2], ARGV[2], nb)
 return {1, nb}
 `;
 
-async function change(tag, delta, label, kind) {
-  const r = await redis.eval(CHANGE_SCRIPT, ['kid:' + tag], [String(delta)]);
+// kind: 'earn' (game station), 'spend' (checkout) or 'adjust' (staff correction, not counted in stats)
+async function change(tag, delta, label, kind, items) {
+  const r = await redis.eval(CHANGE_SCRIPT, ['kid:' + tag, 'bal'], [String(delta), tag]);
   const code = Number(r[0]);
   const bal = Number(r[1]);
   if (code === -1) throw httpErr(404, 'That wristband is not registered.');
   if (code === -2) {
-    const name = await redis.hget('kid:' + tag, 'name');
-    throw httpErr(409, name + ' has ' + bal + ' points and needs ' + (-delta) + '.');
+    const who = await redis.hget('kid:' + tag, 'name');
+    throw httpErr(409, who + ' has ' + bal + ' points and needs ' + (-delta) + '.');
   }
   const name = await redis.hget('kid:' + tag, 'name');
+  const abs = Math.abs(delta);
   const entry = JSON.stringify({ tag, name, delta, balance: bal, label, kind, ts: Date.now() });
   const p = redis.pipeline();
   p.lpush('ledger', entry);
   p.ltrim('ledger', 0, 4999);
   p.lpush('recent:' + tag, entry);
   p.ltrim('recent:' + tag, 0, 5);
+  if (kind === 'earn') {
+    p.hincrby('stats', 'tx', 1);
+    p.hincrby('stats', 'earned', abs);
+    p.hincrby('stats:stations', label, abs);
+  } else if (kind === 'spend') {
+    p.hincrby('stats', 'tx', 1);
+    p.hincrby('stats', 'spent', abs);
+    (items || []).forEach((i) => {
+      p.hincrby('stats:items', i.name, i.qty);
+      p.hincrby('stats:itempts', i.name, i.qty * i.cost);
+    });
+  }
   await p.exec();
-  return bal;
+  return { balance: bal, name };
 }
 
-module.exports = { redis, TAG_RE, toObj, httpErr, checkPassword, change };
+module.exports = { redis, TAG_RE, toObj, httpErr, getRole, change };
