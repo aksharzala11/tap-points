@@ -271,7 +271,31 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   var COIN='<svg class="coin sm"><use href="#coin"/></svg>';
   var ADMIN_TABS={award:1,checkout:1,roster:1};
   var state={pw:null,kids:{},menu:[],ledger:[],tab:'kid',kidTag:null,kidInfo:null,co:{tag:null,cart:{},custom:0},rsSel:null,linkMode:false,scanning:false,busy:0};
-  var lastSeen={},awardAt={},pollTimer=null,kidTimer=null;
+  var lastSeen={},pollTimer=null,kidTimer=null,pending=null;
+
+  /* phone-local storage: keeps staff signed in and keeps the mode when a tag tap opens a fresh page (iPhone) */
+  function ls(k,v){
+    try{
+      if(v===undefined)return localStorage.getItem(k);
+      if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);
+    }catch(_){}
+    return null;
+  }
+
+  /* a tag tapped on an iPhone opens this page as /?t=<wristband id> */
+  try{
+    var u0=new URL(location.href),t0=u0.searchParams.get('t');
+    if(t0){
+      pending=t0.trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100);
+      u0.searchParams.delete('t');
+      history.replaceState(null,'',u0.pathname+(u0.search||'')+u0.hash);
+    }
+  }catch(_){}
+  function runPending(){
+    if(!pending)return;
+    if(ADMIN_TABS[state.tab]&&!state.pw)return;
+    var p=pending;pending=null;onTag(p);
+  }
 
   function normTag(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9:_.\-@+~]/g,'-').slice(0,100)}
   function flash(kind,title,sub){
@@ -316,7 +340,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   }
   function lock(expired){
     state.pw=null;state.kids={};state.menu=[];state.ledger=[];state.rsSel=null;state.linkMode=false;
-    try{sessionStorage.removeItem('tp_pw')}catch(_){}
+    ls('tp_pw',null);
     clearInterval(pollTimer);
     $('lockBtn').hidden=true;$('kidFind').hidden=true;
     renderAll();showTab(state.tab);
@@ -327,8 +351,8 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     state.pw=pw;
     try{
       await refresh();
-      try{sessionStorage.setItem('tp_pw',pw)}catch(_){}
-      $('pw').value='';onUnlocked();
+      ls('tp_pw',pw);
+      $('pw').value='';onUnlocked();runPending();
     }catch(e){state.pw=null;flash('bad',e.message)}
   }
   $('loginBtn').onclick=login;
@@ -337,7 +361,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
 
   /* ---------- tabs ---------- */
   function showTab(t){
-    state.tab=t;
+    state.tab=t;ls('tp_tab',t);
     document.querySelectorAll('.tabs button').forEach(function(b){b.setAttribute('aria-selected',String(b.dataset.tab===t))});
     var locked=ADMIN_TABS[t]&&!state.pw;
     ['kid','award','checkout','roster'].forEach(function(x){$('p-'+x).hidden=!(x===t&&!locked)});
@@ -349,7 +373,7 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   /* ---------- NFC ---------- */
   var scanCtl=null,wake=null;
   async function startNfc(){
-    if(!('NDEFReader' in window)){flash('warn','NFC reading is not available on this device','Use Chrome on an Android phone or tablet, with NFC turned on in settings.');return}
+    if(!('NDEFReader' in window)){flash('warn','This browser cannot read tags directly','On an iPhone, hold the tag to the top of the phone and tap the banner that appears. On Android, use Chrome with NFC turned on.');return}
     try{
       var r=new NDEFReader();scanCtl=new AbortController();
       await r.scan({signal:scanCtl.signal});
@@ -429,17 +453,18 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
     renderAwardChips();
   }
   $('awChips').addEventListener('click',function(e){var b=e.target.closest('button[data-a]');if(!b)return;$('awAmt').value=b.dataset.a;awardHint()});
-  $('awAmt').addEventListener('input',awardHint);$('awLabel').addEventListener('input',awardHint);
+  $('awAmt').addEventListener('input',function(){ls('tp_awamt',$('awAmt').value);awardHint()});
+  $('awLabel').addEventListener('input',function(){ls('tp_awlabel',$('awLabel').value);awardHint()});
   async function doAward(tag){
     var k=state.kids[tag];
     if(!k){flash('bad','This wristband is not registered','Sign the kid up in Roster first.');$('rgTag').value=tag;return}
     var a=Math.floor(Number($('awAmt').value)),l=$('awLabel').value.trim()||'Game';
     if(!(a>0)){flash('warn','Set the points per tap first');return}
-    var now=Date.now();
-    if(awardAt[tag]&&now-awardAt[tag]<3000){flash('warn','Already given',k.name+' just got points. Wait a few seconds to tap again.');return}
-    awardAt[tag]=now;
+    var now=Date.now(),last=Number(ls('tp_aw_'+tag)||0);
+    if(last&&now-last<3000){flash('warn','Already given',k.name+' just got points. Wait a few seconds to tap again.');return}
+    ls('tp_aw_'+tag,String(now));
     try{var nb=await applyDelta(tag,a,l);flash('earn','+'+fmt(a)+' for '+k.name,'Balance is now '+fmt(nb)+' points')}
-    catch(e){awardAt[tag]=0;flash('bad',e.message)}
+    catch(e){ls('tp_aw_'+tag,null);flash('bad',e.message)}
   }
   wireSearch('awSearch','awResults',doAward);
 
@@ -630,12 +655,18 @@ b.pos,b.neg{font-variant-numeric:tabular-nums}
   }
 
   /* ---------- start ---------- */
-  awardHint();renderAll();showTab('kid');
+  var savedAmt=ls('tp_awamt'),savedLabel=ls('tp_awlabel'),savedTab=ls('tp_tab');
+  if(savedAmt)$('awAmt').value=savedAmt;
+  if(savedLabel)$('awLabel').value=savedLabel;
+  awardHint();renderAll();
+  showTab(['kid','award','checkout','roster'].indexOf(savedTab)>-1?savedTab:'kid');
   (async function(){
-    var pw=null;try{pw=sessionStorage.getItem('tp_pw')}catch(_){}
-    if(!pw)return;
-    state.pw=pw;
-    try{await refresh();onUnlocked()}catch(_){state.pw=null;try{sessionStorage.removeItem('tp_pw')}catch(__){}}
+    var pw=ls('tp_pw');
+    if(pw){
+      state.pw=pw;
+      try{await refresh();onUnlocked()}catch(_){state.pw=null;ls('tp_pw',null);showTab(state.tab)}
+    }
+    runPending();
   })();
 })();
 </script>
